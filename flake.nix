@@ -30,7 +30,11 @@
               elf2uf2-rs
               picotool
               tio
+              cava
+              blackhole
               python3
+              python3Packages.pip
+              python3Packages.virtualenv
             ];
           };
         });

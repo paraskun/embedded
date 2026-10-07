@@ -1,9 +1,5 @@
 use embassy_rp::{
-    Peri,
-    clocks::clk_sys_freq,
-    gpio::Pull,
-    pio::{self, Direction::Out, ShiftConfig, ShiftDirection::Left},
-    pwm::{self, Pwm},
+    Peri, clocks::clk_sys_freq, dma, gpio::Pull, pio::{self, Direction::Out, ShiftConfig, ShiftDirection::Left}, pwm::{self, Pwm},
 };
 use embassy_time::Timer;
 use fixed::types::U24F8;
@@ -12,6 +8,7 @@ use core::marker::PhantomData;
 const SCREEN_MAX: u16 = 1024;
 
 pub struct Screen<'d, PIO: pio::Instance, SLICE: pwm::Slice> {
+    dma: dma::Channel<'d>,
     sm0: pio::StateMachine<'d, PIO, 0>,
     counter: Pwm<'d>,
 
@@ -20,6 +17,7 @@ pub struct Screen<'d, PIO: pio::Instance, SLICE: pwm::Slice> {
 
 impl<'d, PIO: pio::Instance, SLICE: pwm::Slice> Screen<'d, PIO, SLICE> {
     pub fn new(
+        dma: dma::Channel<'d>,
         pio: pio::Pio<'d, PIO>,
         din_pin: Peri<'d, impl pio::PioPin>,
         pwm: Peri<'d, SLICE>,
@@ -50,7 +48,7 @@ impl<'d, PIO: pio::Instance, SLICE: pwm::Slice> Screen<'d, PIO, SLICE> {
         let counter = Pwm::new_input(pwm, pwm_pin, Pull::Down,
             pwm::InputMode::RisingEdge, pwm_cfg);
 
-        Self { sm0: sm0, counter: counter, _slice: PhantomData }
+        Self { dma: dma, sm0: sm0, counter: counter, _slice: PhantomData }
     }
 
     pub async fn size(&mut self) -> u16 {
@@ -64,5 +62,9 @@ impl<'d, PIO: pio::Instance, SLICE: pwm::Slice> Screen<'d, PIO, SLICE> {
         Timer::after_millis(50).await;
 
         SCREEN_MAX - (self.counter.counter() / 24)
+    }
+
+    pub async fn push(&mut self, frame: &[u32]) {
+        self.sm0.tx().dma_push(&mut self.dma, frame, false).await;
     }
 }

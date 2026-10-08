@@ -287,6 +287,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "cav-rx"
+version = "0.0.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-net",
+ "embassy-time",
+ "esp-alloc",
+ "esp-backtrace",
+ "esp-bootloader-esp-idf",
+ "esp-hal",
+ "esp-println",
+ "esp-radio",
+ "esp-rtos",
+ "panic-halt 0.2.0",
+]
+
+[[package]]
+name = "cav-tx"
+version = "0.0.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-rp",
+ "embassy-time",
+ "panic-halt 0.2.0",
+]
+
+[[package]]
 name = "cc"
 version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2261,7 +2291,7 @@ dependencies = [
  "embassy-futures",
  "embassy-rp",
  "embassy-time",
- "panic-halt",
+ "panic-halt 1.0.0",
  "shared",
 ]
 
@@ -2276,7 +2306,7 @@ dependencies = [
  "embassy-rp",
  "embassy-time",
  "fixed",
- "panic-halt",
+ "panic-halt 1.0.0",
 ]
 
 [[package]]
@@ -2311,11 +2341,17 @@ dependencies = [
  "embassy-usb",
  "embedded-graphics",
  "fixed",
- "panic-halt",
+ "panic-halt 1.0.0",
  "portable-atomic",
  "ssd1306",
  "static_cell",
 ]
+
+[[package]]
+name = "panic-halt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
 
 [[package]]
 name = "panic-halt"

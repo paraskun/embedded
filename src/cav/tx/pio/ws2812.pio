@@ -1,0 +1,12 @@
+.program ws2812
+.side_set 1
+
+.wrap_target
+bit:
+    out x, 1        side 0b0 [3]; 4
+    jmp !x, zer     side 0b1 [2]; 3
+one:
+    jmp bit         side 0b1 [2]; 3
+zer:
+    nop             side 0b0 [2]; 3
+.wrap

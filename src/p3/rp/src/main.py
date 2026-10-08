@@ -4,7 +4,8 @@ cava_matrix.py - stream a CAVA audio visualizer to a square LED matrix.
 
     python3 cava_matrix.py 60 /dev/ttyACM0
 
-1. Sends the SIZE command and reads back the number of pixels (square display).
+1. Sends the SIZE command and reads back the pixel count as a raw 2-byte integer
+   (square display).
 2. Writes a CAVA config (one bar per column, the given FPS) and starts CAVA.
 3. For every CAVA frame sends FRAME_CMD followed by pixels*3 bytes of RGB,
    row by row from the top-left (row 0 = top, left to right).
@@ -17,13 +18,12 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
-import time
 
 import serial
 
 # ---- Protocol: adjust to match your firmware ---------------------------------
-SIZE_CMD = b"size\r"          # firmware replies with the pixel count, e.g. "64\r\n"
+SIZE_CMD = b"size\r"          # firmware replies with the pixel count as 2 raw bytes
+SIZE_BYTEORDER = "big"     # u16::to_le_bytes() on the firmware side; "big" for to_be_bytes()
 FRAME_CMD = b"frame\r"        # followed by exactly pixels*3 raw RGB bytes
 SIZE_TIMEOUT = 2.0            # seconds to wait for the SIZE reply
 
@@ -36,29 +36,13 @@ PEAK_COLOR = (0.7, 0.7, 0.9)
 
 
 def query_size(ser):
-    """Send SIZE and return the first all-digit line of the reply.
-    Other lines (e.g. the firmware echoing the command) are ignored."""
+    """Send SIZE and return the pixel count from the 2-byte raw reply."""
     ser.reset_input_buffer()
     ser.write(SIZE_CMD)
-    deadline = time.monotonic() + SIZE_TIMEOUT
-    buf = b""
-    while time.monotonic() < deadline:
-        buf += ser.read(ser.in_waiting or 1)
-        *lines, buf = buf.replace(b"\r", b"\n").split(b"\n")
-        for line in lines:
-            if line.strip().isdigit():
-                return int(line.strip())
-    sys.exit(f"error: no reply to {SIZE_CMD!r} within {SIZE_TIMEOUT} s")
-
-
-def drain(ser, stop):
-    """Keep reading whatever the device sends (echo, messages). If nobody reads,
-    the device's USB writes eventually block and it stops accepting frames."""
-    while not stop.is_set():
-        try:
-            ser.read(ser.in_waiting or 1)
-        except (serial.SerialException, OSError, TypeError):
-            return
+    reply = ser.read(2)                 # blocks up to the port timeout
+    if len(reply) != 2:
+        sys.exit(f"error: expected 2 bytes in reply to {SIZE_CMD!r}, got {len(reply)}")
+    return int.from_bytes(reply, SIZE_BYTEORDER)
 
 
 def cava_config(bars, fps):
@@ -143,19 +127,13 @@ def main():
     if not 1 <= args.fps <= 240:
         sys.exit("error: fps must be between 1 and 240")
 
-    ser = serial.Serial(args.device, timeout=0.1, write_timeout=2)
+    ser = serial.Serial(args.device, timeout=SIZE_TIMEOUT, write_timeout=2)
 
     pixels = query_size(ser)
     side = math.isqrt(pixels)
     if pixels == 0 or side * side != pixels:
         sys.exit(f"error: display reports {pixels} pixels, which is not a square")
     print(f"display {side}x{side} ({pixels} px), {args.fps} FPS", file=sys.stderr)
-
-    return;
-
-    stop = threading.Event()
-    reader = threading.Thread(target=drain, args=(ser, stop), daemon=True)
-    reader.start()
 
     with tempfile.NamedTemporaryFile("w", prefix="cava_matrix_", suffix=".conf", delete=False) as f:
         f.write(cava_config(side, args.fps))
@@ -192,8 +170,6 @@ def main():
             ser.flush()
         except (serial.SerialException, OSError):
             pass
-        stop.set()
-        reader.join(timeout=1)
         ser.close()
 
 

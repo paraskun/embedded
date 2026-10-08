@@ -27,8 +27,11 @@ async fn usb_task(mut device: UsbDevice<'static, Driver<'static, peripherals::US
     executor = "embassy_rp::executor::Executor",
     entry = "cortex_m_rt::entry",
 )]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let hal = embassy_rp::init(Config::default());
+
+    let (mut iface, dev) = usb::Interface::new(Driver::new(hal.USB, Irqs));
+    spawner.spawn(usb_task(dev).unwrap());
 
     let pio0 = rp_pio::Pio::new(hal.PIO0, Irqs);
     let mut screen = pio::Screen::new(
@@ -39,9 +42,7 @@ async fn main(_spawner: Spawner) {
         hal.PIN_1
     );
 
-    let mut iface = usb::Interface::new(Driver::new(hal.USB, Irqs));
-
-    let mut buf = [0u32, 64];
+    let mut buf = [0u32; 64];
     let mut frame = [0u8; 192];
 
     loop {
@@ -51,14 +52,24 @@ async fn main(_spawner: Spawner) {
                 iface.write(&size.to_be_bytes()).await
             },
             usb::Cmd::Frame => {
+                let mut r = 0;
                 let mut i = 0;
+                let mut p = 0;
 
                 for ch in frame.chunks_exact(3) {
-                    buf[i] = (u32::from(ch[1]) << 24)
-                            | (u32::from(ch[0]) << 16)
-                            | (u32::from(ch[2]) << 8);
+                    buf[p] = (u32::from(ch[1]) << 24)
+                           | (u32::from(ch[0]) << 16)
+                           | (u32::from(ch[2]) << 8);
 
                     i += 1;
+
+                    if i % 8 == 0 {
+                        r += 1;
+                    }
+
+                    p = if r % 2 == 0 { i } else {
+                        (8 * (r * 2 + 1)) - i - 1
+                    };
                 }
 
                 screen.push(&buf).await;

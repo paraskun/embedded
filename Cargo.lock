@@ -300,7 +300,8 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
- "panic-halt 0.2.0",
+ "panic-halt 1.0.0",
+ "static_cell",
 ]
 
 [[package]]

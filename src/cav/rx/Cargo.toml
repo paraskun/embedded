@@ -11,13 +11,15 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+embedded-hal-async = { workspace = true }
+
 embassy-executor = { workspace = true }
 embassy-time = { workspace = true }
 embassy-net = { workspace = true }
 
-esp-hal = { version = "1.2.2", features = ["esp32c3", "unstable"] }
+esp-hal = { version = "1.2.2", features = ["unstable", "esp32c3"] }
 esp-rtos = { version = "0.4.0", features = ["esp32c3", "embassy", "esp-radio"] }
-esp-radio = { version = "1.0.0-beta.1", features = ["esp32c3", "wifi"] }
+esp-radio = { version = "1.0.0-beta.1", features = ["unstable", "esp32c3", "wifi", "ble"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32c3"] }
 esp-alloc = { version = "0.11.0", features = ["esp32c3", "global-allocator", "compat"] }
 esp-backtrace = { version = "0.20.0", features = ["esp32c3", "panic-handler", "defmt"] }
@@ -25,3 +27,5 @@ esp-println = { version = "0.18.0", features = ["esp32c3", "defmt-espflash"] }
 
 static_cell = { workspace = true }
 panic-halt = { workspace = true }
+panic-reset = { workspace = true }
+bytemuck = { version = "1.25.2", features = ["derive"] }

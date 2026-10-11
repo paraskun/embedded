@@ -29,13 +29,25 @@
               espflash
               elf2uf2-rs
               picotool
-              tio
-              cava
-              blackhole
               python3
               python3Packages.pip
               python3Packages.virtualenv
+              stdenv.cc.cc.lib
+              libGL
+              xorg.libX11
+              expat
+              zlib
             ];
+
+            shellHook = ''
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
+                pkgs.stdenv.cc.cc.lib
+                pkgs.libGL
+                pkgs.xorg.libX11
+                pkgs.expat
+                pkgs.zlib
+              ]}:$LD_LIBRARY_PATH"
+            '';
           };
         });
     };

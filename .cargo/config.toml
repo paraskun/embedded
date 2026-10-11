@@ -1,6 +1,9 @@
 [alias]
 xtask = "run --quiet --package xtask --"
 
+[build]
+# target = "riscv32imc-unknown-none-elf"
+
 [target.thumbv6m-none-eabi]
 runner = "sudo picotool load -v -x -t elf"
 rustflags = [

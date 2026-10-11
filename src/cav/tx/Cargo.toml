@@ -26,3 +26,4 @@ cortex-m = { version = "0.7.9", features = [ "inline-asm" ] }
 cortex-m-rt = "0.7.6"
 
 panic-halt = "0.2.0"
+fixed = { workspace = true }

@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_sum2();
+module tb_sum();
 
   logic a;
   logic b;
@@ -8,11 +8,11 @@ module tb_sum2();
   logic s;
   logic cout;
   
-  sum2 DUT(.a(a), .b(b), .cin(cin), .s(s), .cout(cout));
+  sum DUT(.a(a), .b(b), .cin(cin), .s(s), .cout(cout), .p(), .g());
   
   initial begin
-    $dumpfile("out/sum2/sim.vcd");
-    $dumpvars(0, tb_sum2);
+    // $dumpfile("out/sum/sim.vcd");
+    // $dumpvars(0, tb_sum);
 
     {cin, a, b} = 3'b000;            #10;
 

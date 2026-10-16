@@ -5,16 +5,24 @@
 
   outputs = { self, nixpkgs }:
   let
-    system = "aarch64-darwin";
-    pkgs = import nixpkgs { inherit system; };
+    supportedSystems = [ "x86_64-linux" "aarch64-darwin" ];
+    forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
   in
   {
-    devShells.${system}.default = pkgs.mkShell {
-      packages = with pkgs; [
-        iverilog
-        gtkwave
-        zip
-      ];
-    };
+    devShells = forAllSystems (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+      in
+      {
+        default = pkgs.mkShell {
+          packages = with pkgs; [
+            iverilog
+            gtkwave
+            zip
+          ];
+        };
+      });
   };
 }

@@ -16,8 +16,8 @@ impl<'a> Credentials {
 }
 
 pub async fn capture(mut _ctl: &esp_radio::wifi::WifiController<'static>) -> Result<Credentials, ()> {
-    let ssid = "TP-Link_Extender";
-    let pass = "6QG6Q9A8";
+    let ssid = "KaHypa";
+    let pass = "diy@or@die";
 
     let mut cred = Credentials { ssid: [0; 256], ssid_len: 0, pass: [0; 256], pass_len: 0 };
     cred.ssid[..ssid.len()].copy_from_slice(ssid.as_bytes());

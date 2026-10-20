@@ -22,8 +22,8 @@ back plate, so the LED sandwich is squeezed between those posts and the bezel.
 Parts (modelled separately, shown assembled):
   * shell    - the box: bezel, walls, matrix pocket, corner posts, USB slots
   * grid     - 8x8 light divider; sits on the panel's row dividers only, the
-               column gridlines and the outer rows being relieved for the
-               panel's own caps and solder joints
+               column gridlines and the first and last row gridlines being
+               relieved for the panel's own caps
   * diffuser - 0.8 mm sheet, print in white/natural at 100% infill
   * plate    - back cover: perfboard standoffs, vents, leg grooves
   * leg      - clip-in wedge, one per angle
@@ -36,13 +36,17 @@ on the bed.  Nothing needs support; the only bridges are the four corner-post
 shelves, the USB slot ceilings and the groove roofs, all short and anchored on
 two sides.
 
-Run with --stl to write every printed part into ./stl, otherwise the module
-shows itself in the OCP viewer.  All sizes are mm; Z runs from the back face
+Run with --stl to write every printed part into ./stl, with --serve [[HOST:]PORT]
+to view the assembly in a browser (three.js, default localhost:8000), otherwise
+the module shows itself in the OCP viewer.  All sizes are mm; Z runs from the back face
 (0) toward the LEDs.
 """
 
+import json
 import math
 import sys
+import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from build123d import *
@@ -53,6 +57,7 @@ C, MIN = Align.CENTER, Align.MIN
 MAT = 65.0             # square WS2812 panel, 8x8 on a 8.125 pitch
 MAT_PCB = 1.6
 MAT_LED = 1.7          # 5050 package height above the panel
+LED = 5.0              # 5050 package footprint
 MAT_CLR = 0.4          # per side, panel -> pocket
 PITCH = MAT / 8
 
@@ -74,14 +79,13 @@ STACK_CLR = 0.2        # slack so the sandwich is never crushed
 INSERT_CLR = 0.2       # per side, grid/diffuser -> pocket
 
 # Relief where the grid would otherwise land on the panel's own parts: a
-# decoupling cap sits on every column gridline, and the top and bottom rows
-# carry solder joints.  The grid ends up resting on the row dividers only.
+# decoupling cap sits on every column gridline next to each LED, and on the
+# first and last row gridlines next to each LED as well.  The grid ends up
+# resting on the remaining row dividers only.
 CAP = (2.0, 1.25, 1.1)         # cap envelope on a column gridline
+CAP_ROWS = (1, 7)              # row gridlines that carry caps too
 CAP_H = 1.5                    # channel depth, cut up from the panel surface
 CAP_W = 2.6                    # channel width, centred on the gridline
-PAD = (3.0, 1.8)               # solder band on the top and bottom rows: depth, height
-PAD_H = 2.0                    # relief depth
-PAD_BAND = 4.0                 # how far in from the +/-Y edges it reaches
 
 # --- Bay and back plate ----------------------------------------------------
 BACK_T = 4.0           # back plate: thick enough for the leg grooves
@@ -216,8 +220,8 @@ def rail(cy, neck, head, depth, x0, x1, lead=0.0):
 # ---------------------------------------------------------------------------
 shell = Box(OUT, OUT, DEPTH, align=(C, C, MIN))
 shell = fillet(shell.edges().filter_by(Axis.Z), R_CORNER)
-shell = chamfer(shell.faces().sort_by(Axis.Z)[-1].edges(), CH_FRONT)
-shell = chamfer(shell.faces().sort_by(Axis.Z)[0].edges(), CH_BACK)
+shell = chamfer(shell.edges().group_by(Axis.Z)[-1], CH_FRONT)
+shell = chamfer(shell.edges().group_by(Axis.Z)[0], CH_BACK)
 
 shell -= fbox(POCKET, POCKET, -1, Z_FACE_IN)        # pocket and wiring bay
 shell -= fbox(WIN, WIN, Z_FACE_IN, DEPTH + 1)       # bezel window
@@ -250,10 +254,10 @@ grid -= cells & fbox(inner, inner, Z_GRID - 2, Z_GRID + GRID_H + 2)
 
 for i in range(9):                                  # clear the caps: every
     grid -= fbox(CAP_W, GRID_XY + 2, Z_GRID, Z_GRID + CAP_H,   # column gridline,
-                 cx=(i - 4) * PITCH)                # rim included
-for sy in (1, -1):                                  # clear the row solder joints
-    grid -= fbox(GRID_XY + 2, PAD_BAND, Z_GRID, Z_GRID + PAD_H,
-                 cy=sy * (GRID_XY / 2 - PAD_BAND / 2))
+                 cx=(i - 4) * PITCH)                # rim included,
+for j in CAP_ROWS:                                  # and the capped rows
+    grid -= fbox(GRID_XY + 2, CAP_W, Z_GRID, Z_GRID + CAP_H,
+                 cy=(j - 4) * PITCH)
 
 # ---------------------------------------------------------------------------
 # Diffuser
@@ -300,15 +304,16 @@ for cy in rail_ys:                                  # tongues
 matrix = fbox(MAT, MAT, Z_PCB, Z_PCB + MAT_PCB)
 for i in range(8):
     for j in range(8):
-        matrix += fbox(5.0, 5.0, Z_GRID, Z_GRID + MAT_LED,
+        matrix += fbox(LED, LED, Z_GRID, Z_GRID + MAT_LED,
                        cx=(i - 3.5) * PITCH, cy=(j - 3.5) * PITCH)
 for i in range(1, 8):                               # caps on the column gridlines
     for j in range(8):
         matrix += fbox(CAP[0], CAP[1], Z_GRID, Z_GRID + CAP[2],
                        cx=(i - 4) * PITCH, cy=(j - 3.5) * PITCH)
-for sy in (1, -1):                                  # solder along the outer rows,
-    matrix += fbox(MAT, PAD[0], Z_GRID, Z_GRID + PAD[1],        # worst case: a
-                   cy=sy * (MAT / 2 - PAD[0] / 2))              # full-width band
+for j in CAP_ROWS:                                  # and on two row gridlines,
+    for i in range(8):                              # turned to match
+        matrix += fbox(CAP[1], CAP[0], Z_GRID, Z_GRID + CAP[2],
+                       cx=(i - 3.5) * PITCH, cy=(j - 4) * PITCH)
 
 
 perf = fbox(*PERF, Z_PERF, Z_MOD, cx=PERF_X)
@@ -334,9 +339,183 @@ pd += fbox(9.0, 7.3, Z_PERF - PD[2] / 2 - 1.6, Z_PERF - PD[2] / 2 + 1.6,
 
 PRINTED = {"shell": shell, "plate": plate, "grid": grid,
            "diffuser": diffuser, "leg": leg}
+REFERENCE = {"matrix": matrix, "perf": perf, "mcu_hi": mcu_hi,
+             "mcu_lo": mcu_lo, "pd": pd}
+
+# Browser viewer: colour, opacity and explode step (along Z) per part.
+LOOK = {
+    "shell":    ("#e07a3f", 1.0, 4),
+    "plate":    ("#c9662f", 1.0, -1),
+    "grid":     ("#303236", 1.0, 2),
+    "diffuser": ("#f4f4f0", 0.75, 3),
+    "leg":      ("#d9a441", 1.0, -2),
+    "matrix":   ("#1f6f3f", 0.8, 1),
+    "perf":     ("#b5894a", 0.8, 0),
+    "mcu_hi":   ("#2552a3", 0.8, 0),
+    "mcu_lo":   ("#2552a3", 0.8, 0),
+    "pd":       ("#7a2fa3", 0.8, 0),
+}
+
+VIEWER = """<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cav box</title>
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: #d9dce1;
+             font: 13px system-ui, sans-serif; color: #222; }
+#ui { position: absolute; top: 10px; left: 10px; width: 200px; padding: 8px 12px;
+      background: rgba(255, 255, 255, .85); border-radius: 6px; }
+#ui h4 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; color: #777; }
+#ui label { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+#ui .sw { width: 10px; height: 10px; border-radius: 2px; }
+#ui a { margin-left: auto; color: #2a5db0; text-decoration: none; }
+#ui input[type=range] { width: 100%; }
+#info { position: absolute; bottom: 8px; left: 12px; color: #555; }
+</style>
+<script type="importmap">{"imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<div id="ui"></div>
+<div id="info">__INFO__</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+const PARTS = __PARTS__;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.localClippingEnabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd9dce1);
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+camera.up.set(0, 0, 1);                       // Z runs back -> LEDs
+camera.position.set(-140, -180, 160);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 15);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(-0.4, 0.6, 1);               // follows the camera
+camera.add(sun);
+scene.add(camera);
+scene.add(new THREE.AxesHelper(20));
+
+const cut = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1000);
+const meshes = {};
+const ui = document.getElementById('ui');
+
+function slider(label, min, max, value, oninput) {
+  const wrap = document.createElement('label');
+  wrap.style.flexDirection = 'column';
+  wrap.style.alignItems = 'stretch';
+  const input = Object.assign(document.createElement('input'),
+                              { type: 'range', min, max, value, step: 0.5 });
+  input.oninput = () => oninput(+input.value);
+  wrap.append(label, input);
+  ui.append(wrap);
+  oninput(value);
+}
+
+for (const [title, printed] of [['printed', true], ['reference', false]]) {
+  ui.insertAdjacentHTML('beforeend', `<h4>${title}</h4>`);
+  for (const [name, p] of Object.entries(PARTS)) {
+    if (p.printed !== printed) continue;
+    const row = document.createElement('label');
+    const box = Object.assign(document.createElement('input'),
+                              { type: 'checkbox', checked: true });
+    box.onchange = () => { if (meshes[name]) meshes[name].visible = box.checked; };
+    row.append(box);
+    row.insertAdjacentHTML('beforeend',
+      `<span class="sw" style="background:${p.color}"></span>${name}` +
+      (printed ? `<a href="${name}.stl" download title="download STL">stl</a>` : ''));
+    ui.append(row);
+    new STLLoader().load(`${name}.stl`, geo => {
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: p.color, roughness: 0.6, side: THREE.DoubleSide,
+        transparent: p.opacity < 1, opacity: p.opacity, clippingPlanes: [cut] }));
+      mesh.visible = box.checked;
+      mesh.position.z = p.explode * explode;
+      meshes[name] = mesh;
+      scene.add(mesh);
+    });
+  }
+}
+
+let explode = 0;
+ui.insertAdjacentHTML('beforeend', '<h4>view</h4>');
+slider('explode', 0, 20, 0, v => {
+  explode = v;
+  for (const [name, m] of Object.entries(meshes)) m.position.z = PARTS[name].explode * v;
+});
+slider('section X', -__HALF__, __HALF__, __HALF__, v => { cut.constant = v; });
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body></html>
+"""
+
+
+def serve(addr):
+    """Serve every part as STL plus a three.js page that assembles them."""
+    host, _, port = addr.rpartition(":")
+    host, port = host or "localhost", int(port or 8000)
+
+    files = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, part in {**PRINTED, **REFERENCE}.items():
+            path = Path(tmp) / f"{name}.stl"
+            export_stl(part, str(path))
+            files[f"/{name}.stl"] = ("model/stl", path.read_bytes())
+    parts = {name: {"printed": name in PRINTED, "color": c, "opacity": o, "explode": e}
+             for name, (c, o, e) in LOOK.items()}
+    page = (VIEWER.replace("__PARTS__", json.dumps(parts))
+                  .replace("__HALF__", f"{HALF + 5:.0f}")
+                  .replace("__INFO__", f"{OUT:.1f} x {OUT:.1f} x {DEPTH:.1f} mm, "
+                                       f"tilt {TILT:.0f} deg"))
+    files["/"] = files["/index.html"] = ("text/html; charset=utf-8", page.encode())
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            hit = files.get(self.path.split("?")[0])
+            if hit is None:
+                self.send_error(404)
+                return
+            kind, body = hit
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer((host, port), Handler) as httpd:
+        print(f"viewer on http://{host}:{port}/  (ctrl-c to stop)", flush=True)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
 
 if __name__ == "__main__":
-    if "--stl" in sys.argv:
+    if "--serve" in sys.argv:
+        i = sys.argv.index("--serve") + 1
+        arg = sys.argv[i] if i < len(sys.argv) and not sys.argv[i].startswith("-") else ""
+        serve(arg)
+    elif "--stl" in sys.argv:
         out = Path(__file__).parent / "stl"
         out.mkdir(exist_ok=True)
         print(f"box {OUT:.1f} x {OUT:.1f} x {DEPTH:.1f}, "

@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>glim box</title>
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: #d9dce1;
+             font: 13px system-ui, sans-serif; color: #222; }
+#ui { position: absolute; top: 10px; left: 10px; width: 200px; padding: 8px 12px;
+      background: rgba(255, 255, 255, .85); border-radius: 6px; }
+#ui h4 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; color: #777; }
+#ui label { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+#ui .sw { width: 10px; height: 10px; border-radius: 2px; }
+#ui a { margin-left: auto; color: #2a5db0; text-decoration: none; }
+#ui input[type=range] { width: 100%; }
+#info { position: absolute; bottom: 8px; left: 12px; color: #555; }
+</style>
+<script type="importmap">{"imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<div id="ui"></div>
+<div id="info">__INFO__</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+const PARTS = __PARTS__;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.localClippingEnabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd9dce1);
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+camera.up.set(0, 0, 1);                       // Z runs back -> LEDs
+camera.position.set(-140, -180, 160);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 15);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(-0.4, 0.6, 1);               // follows the camera
+camera.add(sun);
+scene.add(camera);
+scene.add(new THREE.AxesHelper(20));
+
+const cut = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1000);
+const meshes = {};
+const ui = document.getElementById('ui');
+
+function slider(label, min, max, value, oninput) {
+  const wrap = document.createElement('label');
+  wrap.style.flexDirection = 'column';
+  wrap.style.alignItems = 'stretch';
+  const input = Object.assign(document.createElement('input'),
+                              { type: 'range', min, max, value, step: 0.5 });
+  input.oninput = () => oninput(+input.value);
+  wrap.append(label, input);
+  ui.append(wrap);
+  oninput(value);
+}
+
+for (const [title, printed] of [['printed', true], ['reference', false]]) {
+  ui.insertAdjacentHTML('beforeend', `<h4>${title}</h4>`);
+  for (const [name, p] of Object.entries(PARTS)) {
+    if (p.printed !== printed) continue;
+    const row = document.createElement('label');
+    const box = Object.assign(document.createElement('input'),
+                              { type: 'checkbox', checked: true });
+    box.onchange = () => { if (meshes[name]) meshes[name].visible = box.checked; };
+    row.append(box);
+    row.insertAdjacentHTML('beforeend',
+      `<span class="sw" style="background:${p.color}"></span>${name}` +
+      (printed ? `<a href="${name}.stl" download title="download STL">stl</a>` : ''));
+    ui.append(row);
+    new STLLoader().load(`${name}.stl`, geo => {
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: p.color, roughness: 0.6, side: THREE.DoubleSide,
+        transparent: p.opacity < 1, opacity: p.opacity, clippingPlanes: [cut] }));
+      mesh.visible = box.checked;
+      mesh.position.z = p.explode * explode;
+      meshes[name] = mesh;
+      scene.add(mesh);
+    });
+  }
+}
+
+let explode = 0;
+ui.insertAdjacentHTML('beforeend', '<h4>view</h4>');
+slider('explode', 0, 20, 0, v => {
+  explode = v;
+  for (const [name, m] of Object.entries(meshes))
+    m.position.z = PARTS[name].explode * v;
+});
+slider('section X', -__HALF__, __HALF__, __HALF__, v => { cut.constant = v; });
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body></html>

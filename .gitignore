@@ -1,5 +1,8 @@
 target/
 .direnv/
-src/cav/box/stl/
+src/glim/box/stl/
+src/glim/box/box.step
 __pycache__/
+.venv/
+
 **/.DS_Store

@@ -2,3 +2,4 @@ target/
 .direnv/
 src/cav/box/stl/
 __pycache__/
+**/.DS_Store

@@ -12,10 +12,17 @@ Outer size 71.8 x 71.8 x 30.7 mm; on the desk it occupies 72 x 79 mm and stands
 
 ```sh
 python main.py --stl     # writes stl/{shell,plate,grid,diffuser,leg}.stl
+python main.py --serve   # browser viewer on http://localhost:8000/
 python main.py           # shows the assembly in the OCP viewer
 ```
 
-Needs `build123d` (and `ocp_vscode` for the viewer) from `requirements.txt`.
+Needs `build123d` (and `ocp_vscode` for the OCP viewer) from `requirements.txt`.
+
+`--serve` takes an optional `[HOST:]PORT`, e.g. `--serve 0.0.0.0:8080` to
+reach it from another machine. The page shows all parts, printed and reference,
+with per-part toggles, an explode slider, a section cut along X and a download
+link for each printed STL. It loads three.js from jsDelivr, so the browser
+needs internet access; the script itself does not.
 
 ## Parts
 
@@ -23,7 +30,7 @@ Needs `build123d` (and `ocp_vscode` for the viewer) from `requirements.txt`.
 | --- | --- |
 | `shell` | bezel, walls, matrix pocket, four corner posts, two USB slots |
 | `plate` | back cover: four perfboard standoffs, vents, leg grooves |
-| `grid` | 8x8 light divider on the LED pitch, 5 mm deep, relieved for the panel's caps and solder |
+| `grid` | 8x8 light divider on the LED pitch, 5 mm deep, relieved for the panel's caps |
 | `diffuser` | 0.8 mm sheet; print white or natural at 100% infill |
 | `leg` | the wedge; print one per angle you want |
 
@@ -43,21 +50,21 @@ keep the pixels crisp.
 
 ## Panel relief
 
-The panel carries a decoupling cap on every column gridline and solder joints
-along the top and bottom rows, so the grid cannot sit flat on it. It is cut
-back to clear both and lands on the row dividers only - 56 pads, 5 mm2 each,
-278 mm2 of contact in total, which is plenty to keep it square:
+The panel carries a decoupling cap on every column gridline, beside each LED,
+and on the first and last row gridlines (`CAP_ROWS`), so the grid cannot sit
+flat on it. It is cut back to clear them and lands on the other row dividers
+and the top and bottom rim only - 56 pads, 5 mm2 each, 278 mm2 of contact in
+total, which is plenty to keep it square:
 
 * `CAP_H` 1.5 mm, `CAP_W` 2.6 mm - a channel along every column gridline,
   running the full height and through the left and right rim, in case the outer
-  columns' caps sit under it.
-* `PAD_H` 2.0 mm, `PAD_BAND` 4.0 mm - a band along the top and bottom edges.
+  columns' caps sit under it, and one along each of the capped row gridlines,
+  running the full width.
 
-Both are cut from the panel face upward, so the dividers still stand 3.5 mm
-and 3.0 mm proud there and keep blocking crosstalk. The reference panel models
-the caps (2.0 x 1.25 x 1.1) and a full-width 1.8 mm solder band on the outer
-rows, so `grid & matrix` is a real check - raise `CAP_H` or `PAD_H` if your
-panel's parts are taller.
+The channels are cut from the panel face upward, so the dividers still stand
+3.5 mm proud there and keep blocking crosstalk. The reference panel models the
+caps (2.0 x 1.25 x 1.1, turned on the row gridlines), so `grid & matrix` is a
+real check - raise `CAP_H` if your panel's caps are taller.
 
 ## Hardware
 

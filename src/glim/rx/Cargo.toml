@@ -1,12 +1,12 @@
 [package.metadata.xtask]
-project = "cav"
+project = "glim"
 part = "tx"
 target = "riscv32imc-unknown-none-elf"
 chip = "esp32c3"
 order = 0
 
 [package]
-name = "cav-rx"
+name = "glim-rx"
 edition.workspace = true
 version.workspace = true
 

@@ -1,12 +1,12 @@
 [package.metadata.xtask]
-project = "cav"
+project = "glim"
 part = "tx"
 target = "thumbv6m-none-eabi"
 chip = "RP2040"
 order = 1
 
 [package]
-name = "cav-tx"
+name = "glim-tx"
 edition.workspace = true
 version.workspace = true
 

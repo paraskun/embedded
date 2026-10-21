@@ -6,7 +6,7 @@ members = [
   "shared",
 ]
 exclude = [
-  "src/cav/box",
+  "src/glim/box",
 ]
 
 default-members = [ "xtask" ]

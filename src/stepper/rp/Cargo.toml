@@ -1,0 +1,29 @@
+[package.metadata.xtask]
+project = "stepper"
+part = "rp"
+target = "thumbv6m-none-eabi"
+chip = "RP2040"
+order = 1
+
+[package]
+name = "stepper-rp"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+embassy-executor = { workspace = true }
+embassy-time = { workspace = true }
+embassy-futures = { workspace = true }
+embassy-rp = { version = "0.10.0", features = [
+    "rp2040",
+    "time-driver",
+    "executor-thread",
+    "critical-section-impl",
+    "executor-interrupt",
+]}
+
+cortex-m = { version = "0.7.9", features = [ "inline-asm" ] }
+cortex-m-rt = "0.7.6"
+
+panic-halt = "0.2.0"
+fixed = { workspace = true }

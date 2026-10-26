@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glim Wi-Fi setup</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --fg: #1a1d21;
+    --muted: #5c6670;
+    --field: #ffffff;
+    --line: #c5ccd3;
+    --accent: #0a6cff;
+    --accent-fg: #ffffff;
+    --ok: #12703a;
+    --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --fg: #e8ebee;
+      --muted: #9aa5af;
+      --field: #1d2126;
+      --line: #3a424a;
+      --accent: #4c94ff;
+      --accent-fg: #07101f;
+      --ok: #5ccf8b;
+      --err: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { width: 100%; max-width: 360px; }
+  h1 { margin: 0 0 4px; font-size: 1.4rem; }
+  p.hint { margin: 0 0 20px; color: var(--muted); }
+  label { display: block; margin-bottom: 14px; font-weight: 600; }
+  input {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    font: inherit;
+    color: var(--fg);
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  input:focus-visible, button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+  }
+  button {
+    width: 100%;
+    padding: 11px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-fg);
+    background: var(--accent);
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  #status { min-height: 1.4em; margin-top: 14px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Connect Glim to Wi-Fi</h1>
+  <p class="hint">Enter the network the device should join.</p>
+  <form id="f">
+    <label>Network name (SSID)
+      <input id="ssid" required maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </label>
+    <label>Password
+      <input id="pass" type="password" maxlength="64" autocomplete="off">
+    </label>
+    <button id="go" type="submit">Save and connect</button>
+  </form>
+  <div id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+  const f = document.getElementById('f');
+  const go = document.getElementById('go');
+  const status = document.getElementById('status');
+
+  function show(msg, cls) {
+    status.textContent = msg;
+    status.className = cls || '';
+  }
+
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ssid = encodeURIComponent(document.getElementById('ssid').value);
+    const pass = encodeURIComponent(document.getElementById('pass').value);
+
+    go.disabled = true;
+    show('Sending…');
+    try {
+      const r = await fetch('http://192.168.0.1/set/' + ssid + '/' + pass);
+      if (r.ok) show('Saved. The device is connecting.', 'ok');
+      else show('The device rejected the request (' + r.status + ').', 'err');
+    } catch (_) {
+      // The AP can drop briefly while the device switches channel to join the network.
+      show('No reply from the device. It may still have received the details.', 'err');
+    } finally {
+      go.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

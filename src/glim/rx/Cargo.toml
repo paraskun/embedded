@@ -16,6 +16,12 @@ embedded-hal-async = { workspace = true }
 embassy-executor = { workspace = true }
 embassy-time = { workspace = true }
 embassy-net = { workspace = true }
+embassy-sync = { workspace = true }
+embassy-futures = { workspace = true }
+
+edge-dhcp = { workspace = true }
+edge-nal = { workspace = true }
+edge-nal-embassy = { workspace = true }
 
 esp-hal = { version = "1.2.2", features = ["unstable", "esp32c3"] }
 esp-rtos = { version = "0.4.0", features = ["esp32c3", "embassy", "esp-radio"] }
@@ -25,7 +31,11 @@ esp-alloc = { version = "0.11.0", features = ["esp32c3", "global-allocator", "co
 esp-backtrace = { version = "0.20.0", features = ["esp32c3", "panic-handler", "defmt"] }
 esp-println = { version = "0.18.0", features = ["esp32c3", "defmt-espflash"] }
 
+embedded-io-async = { workspace = true }
 static_cell = { workspace = true }
 panic-halt = { workspace = true }
 panic-reset = { workspace = true }
 bytemuck = { version = "1.25.2", features = ["derive"] }
+
+[build-dependencies]
+flate2 = "1"

@@ -7,34 +7,39 @@ off vertical, picture-frame style - the box rests on its bottom-back edge and
 the long face of the leg lies flat on the desk.
 
 The board stands with its long side vertical and carries the RP2040-Zero and
-the ESP32-C3 SuperMini side by side on top, USB-C ports facing +X, plus the
-USB-C PD trigger underneath with its port on the same wall, centred between the
-other two.  That is what sets the standoff height: the trigger has to live in
-the gap below the board.
+the ESP32-C3 SuperMini side by side on top on tall headers, USB-C ports facing
++X, plus the USB-C PD trigger hanging upside down underneath with its port on
+the same wall, centred between the other two.  The trigger's port sets the
+standoff height and the MCU ports the bay depth; both are measured off the
+soldered-up board.
 
 Front-to-back stack, all captive, no glue:
 
     bezel -> diffuser -> light grid -> matrix PCB -> wiring bay -> back plate
 
-The matrix rests on four corner posts that double as the screw bosses for the
-back plate, so the LED sandwich is squeezed between those posts and the bezel.
+The matrix rests on four corner pillars that stand up off the back plate, so
+screwing the plate on squeezes the LED sandwich between them and the bezel.
+The plate is full size and sits flush on the shell's back edge; its screws
+go into four bosses on the shell walls, clear of the board.
 
 Parts (modelled separately, shown assembled):
-  * shell    - the box: bezel, walls, matrix pocket, corner posts, USB slots
+  * shell    - the box: bezel, walls, matrix pocket, screw bosses, PD USB slot
   * grid     - 8x8 light divider; sits on the panel's row dividers only, the
                column gridlines and the first and last row gridlines being
                relieved for the panel's own caps
   * diffuser - 0.8 mm sheet, print in white/natural at 100% infill
-  * plate    - back cover: perfboard standoffs, vents, leg grooves
+  * plate    - back cover: panel pillars, perfboard standoffs, vents,
+               leg grooves
   * leg      - clip-in wedge, one per angle
   * matrix / perf / mcu_hi / mcu_lo / pd - reference solids, not printed
 
-Print orientation: shell face-down, plate groove-side down, diffuser flat, grid
-diffuser-side down so its relief channels open upward (the other way up they
-would start as 56 loose islands), leg on its side with the triangular profile
-on the bed.  Nothing needs support; the only bridges are the four corner-post
-shelves, the USB slot ceilings and the groove roofs, all short and anchored on
-two sides.
+Print orientation: shell open side down, so the screw bosses grow straight
+up off the bed; plate groove-side down, diffuser flat, grid diffuser-side down
+so its relief channels open upward (the other way up they would start as 56
+loose islands), leg on its side with the triangular profile on the bed.
+Nothing needs support: the bezel's inner lip is a short overhang off the
+walls, and the only bridges are the USB slot ceiling and the groove roofs,
+all short and anchored on two sides.
 
 Run with --help for the export and viewer options; with no options the module
 shows itself in the OCP viewer.  All sizes are mm; Z runs from the back face
@@ -114,12 +119,13 @@ from build123d import *  # noqa: E402, F403 - build123d's documented idiom
 C, MIN = Align.CENTER, Align.MIN
 
 # --- Matrix panel ----------------------------------------------------------
-MAT = 65.0  # square WS2812 panel, 8x8 on a 8.125 pitch
+MAT = 65.0  # square WS2812 panel, 8x8
 MAT_PCB = 1.6
 MAT_LED = 1.7  # 5050 package height above the panel
 LED = 5.0  # 5050 package footprint
+LED_GAP = 3.0  # between neighbouring packages
 MAT_CLR = 0.4  # per side, panel -> pocket
-PITCH = MAT / 8
+PITCH = LED + LED_GAP
 
 # --- Shell -----------------------------------------------------------------
 WALL = 3.0
@@ -127,7 +133,7 @@ FACE_T = 1.6  # bezel thickness
 BEZEL = 1.1  # how far the bezel overlaps the panel, per side
 R_CORNER = 3.0  # outer vertical edges
 CH_FRONT = 1.0  # front outer edge
-CH_BACK = 0.6  # back outer edge, the desk contact line
+CH_BACK = 0.6  # plate's back outer edge, the desk contact line
 CH_WIN = 0.6  # window edge
 
 # --- Face stack ------------------------------------------------------------
@@ -149,9 +155,10 @@ CAP_W = 2.6  # channel width, centred on the gridline
 
 # --- Bay and back plate ----------------------------------------------------
 BACK_T = 4.0  # back plate: thick enough for the leg grooves
-PLATE_CLR = 0.2  # per side, plate -> rebate
-REBATE_W = 1.4  # how far the rebate eats into the wall
-POST = 5.0  # corner post, carries the panel and the plate screws
+POST = 5.0  # corner pillar on the plate, the panel rests on it
+POST_CLR = 0.4  # per side, pillar -> pocket wall
+BOSS = 5.0  # square screw boss on the shell wall, tapered off at 45 deg
+BOSS_AT = 24.0  # boss centre along its wall, from the wall's middle
 PILOT_D = 1.7  # M2 self-tap
 PILOT_L = 8.0  # for the M2x8 plate screws
 SCREW_D = 2.4  # plate through hole
@@ -161,27 +168,35 @@ BOSS_R = 2.5  # Pico standoff
 
 # --- Perfboard -------------------------------------------------------------
 PERF = (40.0, 60.0)  # 4 x 6 cm, 14 x 20 points, long side along Y
-PERF_T = 1.6
+PERF_T = 1.5
 PERF_CLR = 0.9  # board corner -> shell corner post
 PERF_IN = 3.0  # corner mount holes, centres in from each edge
 PERF_HOLE = 3.2  # M3 clearance in the board itself
-STANDOFF = 7.0  # plate -> board; the PD trigger lives in this gap
+PD_CLR = 1.0  # PD port -> back plate; sets the standoff height
 STANDOFF_R = 3.0
 PERF_PILOT_D = 2.5  # M3 self-tap
 PERF_PILOT_L = 5.5  # stays inside the standoff, clear of the leg grooves
 
 # --- Modules ---------------------------------------------------------------
+# Port positions as measured on the soldered-up board, looking at its +X edge
+# with the MCUs on top: left is -Y, right is +Y, heights are off the board's
+# own faces.
+USB_C = (7.3, 8.9, 3.2)  # receptacle shell: length, width, height
+MCU_PORT_L = 15.0  # board's left end -> left MCU port's left side
+MCU_PORT_R = 14.5  # board's right end -> right MCU port's right side
+MCU_PORT_Z = 12.0  # board top -> MCU port underside; tall headers
+PD_PORT_L = 25.5  # board's left end -> PD port's left side
+PD_PORT_Z = 7.0  # board underside -> PD port underside, hanging
+
 MCU = (23.5, 18.0)  # RP2040-Zero / ESP32-C3 SuperMini, long axis along X
-MCU_Y = 9.5  # the two sit at +/- this; the slots follow
-MCU_LIFT = 2.5  # pin header body between board and module
 MCU_PCB = 1.2
-MCU_USB = 3.2  # USB-C shell height above the module PCB
-PD = (20.0, 15.0, 5.0)  # trigger module, hangs under the board at y = 0
+PD = (20.0, 15.0)  # trigger module, port on the far side of its PCB
+PD_PCB = 1.2
 BAY_TOP_CLR = 2.0  # wiring room over the tallest module
 MOD_OVER = 1.5  # module body hangs this far past the board's +X edge
 
-USB_W = 13.0  # slots in the +X wall: wide enough for a plug overmold
-USB_PAD = 0.8  # slop around the connector envelope
+USB_W = 13.0  # PD slot in the +X wall: room for a plug overmold
+USB_H = 7.0
 FAR = 60.0  # "well past the part", for open-ended cuts
 
 VENT_W = 2.6  # vents run up the free strip beside the board
@@ -212,7 +227,8 @@ WIN = MAT - 2 * BEZEL  # bezel opening
 GRID_XY = POCKET - 2 * INSERT_CLR
 DIFF_XY = GRID_XY - 2 * INSERT_CLR
 
-MOD_H = MCU_LIFT + MCU_PCB + MCU_USB  # perfboard surface -> top of a USB-C
+STANDOFF = PD_PORT_Z + PD_CLR  # plate -> board; the PD trigger hangs in here
+MOD_H = MCU_PORT_Z + USB_C[2]  # perfboard surface -> top of an MCU port
 BAY_Z = STANDOFF + PERF_T + MOD_H + BAY_TOP_CLR
 
 DEPTH = BACK_T + BAY_Z + MAT_PCB + GRID_H + STACK_CLR + DIFF_T + FACE_T
@@ -221,17 +237,29 @@ Z_GRID = Z_PCB + MAT_PCB  # panel surface
 Z_DIFF = Z_GRID + GRID_H + STACK_CLR
 Z_FACE_IN = DEPTH - FACE_T
 
-REBATE = POCKET + 2 * REBATE_W
-PLATE_XY = REBATE - 2 * PLATE_CLR
 
-POST_OFF = POCKET / 2 - POST / 2
+POST_OFF = POCKET / 2 - POST_CLR - POST / 2
 post_pts = [(sx * POST_OFF, sy * POST_OFF) for sx in (1, -1) for sy in (1, -1)]
+
+# Screw bosses, as (wall angle about Z, offset along the wall): two on the +X
+# wall beside the ports, two on the +/-Y walls at the -X end.  The board fills
+# the +X end of the Y walls, and the leg grooves cross the lower -X corner.
+boss_at = [(0, BOSS_AT), (0, -BOSS_AT), (90, BOSS_AT), (-90, -BOSS_AT)]
+BOSS_OFF = POCKET / 2 - BOSS / 2
+Z_BOSS = BACK_T + PILOT_L + 1.0  # full section up to here, then the taper
+screw_pts = [
+    (
+        BOSS_OFF * math.cos(math.radians(a)) - s * math.sin(math.radians(a)),
+        BOSS_OFF * math.sin(math.radians(a)) + s * math.cos(math.radians(a)),
+    )
+    for a, s in boss_at
+]
 
 Z_PERF = BACK_T + STANDOFF  # perfboard underside
 Z_MOD = Z_PERF + PERF_T  # module seating plane
 # The board is as far +X as the corner posts allow, so the ports sit close to
 # the wall; the modules then hang MOD_OVER past its edge to get there.
-PERF_EDGE = POCKET / 2 - POST - PERF_CLR
+PERF_EDGE = POCKET / 2 - POST_CLR - POST - PERF_CLR
 PERF_X = PERF_EDGE - PERF[0] / 2
 mount_pts = [
     (PERF_X + sx * (PERF[0] / 2 - PERF_IN), sy * (PERF[1] / 2 - PERF_IN))
@@ -239,13 +267,19 @@ mount_pts = [
     for sy in (1, -1)
 ]
 
-# One slot per port.  The MCU slot spans both mounting styles: modules soldered
-# flat on the board, or lifted MCU_LIFT by a pin header.  The PD slot is simply
-# the whole gap under the board, wherever the trigger ends up in it.
-MCU_SLOT = (Z_MOD + MCU_PCB - USB_PAD, Z_MOD + MOD_H + USB_PAD)
-PD_SLOT = (BACK_T + USB_PAD, Z_PERF - 0.4)
+# Port centres along Y, from the measured edge offsets; each module is centred
+# on its port.
+MCU_Y_LO = -PERF[1] / 2 + MCU_PORT_L + USB_C[1] / 2
+MCU_Y_HI = PERF[1] / 2 - MCU_PORT_R - USB_C[1] / 2
+PD_Y = -PERF[1] / 2 + PD_PORT_L + USB_C[1] / 2
 MOD_X = PERF_EDGE + MOD_OVER - MCU[0] / 2
 PD_X = PERF_EDGE + MOD_OVER - PD[0] / 2
+
+# Only the PD port gets a slot, centred on it; the MCU ports stay closed in.
+# The slot would dip below the shell, so it stops there and the plate closes
+# it off.
+Z_PD_PORT = Z_PERF - PD_PORT_Z + USB_C[2] / 2
+PD_SLOT = (max(BACK_T, Z_PD_PORT - USB_H / 2), Z_PD_PORT + USB_H / 2)
 
 H_LEG = LEG_REACH * math.tan(math.radians(TILT))
 # The box lands on the back chamfer, not on a sharp edge; lift the leg by the
@@ -279,27 +313,36 @@ def rail(cy, neck, head, depth, x0, x1, lead=0.0):
 
 
 # ---------------------------------------------------------------------------
-# Shell: bezel, walls, matrix pocket, corner posts
+# Shell: bezel, walls, matrix pocket, screw bosses
 # ---------------------------------------------------------------------------
 # Solid block first, rounded and chamfered while its edges are still simple,
-# then hollowed out from the back.
-shell = Box(OUT, OUT, DEPTH, align=(C, C, MIN))
+# then hollowed out from the back.  It starts where the plate ends: the two
+# meet flush, so the shell prints open side down with every boss on the bed.
+shell = fbox(OUT, OUT, BACK_T, DEPTH)
 shell = fillet(shell.edges().filter_by(Axis.Z), R_CORNER)
 shell = chamfer(shell.edges().group_by(Axis.Z)[-1], CH_FRONT)
-shell = chamfer(shell.edges().group_by(Axis.Z)[0], CH_BACK)
 
-shell -= fbox(POCKET, POCKET, -1, Z_FACE_IN)  # pocket and wiring bay
+shell -= fbox(POCKET, POCKET, BACK_T - 1, Z_FACE_IN)  # pocket and wiring bay
 shell -= fbox(WIN, WIN, Z_FACE_IN, DEPTH + 1)  # bezel window
-shell -= fbox(REBATE, REBATE, -1, BACK_T)  # back plate rebate
 
-for px, py in post_pts:  # panel rest / screw boss
-    shell += fbox(POST, POST, BACK_T, Z_PCB, cx=px, cy=py)
-    shell -= Pos(px, py, BACK_T) * Cylinder(PILOT_D / 2, PILOT_L, align=(C, C, MIN))
+# Plate screw bosses, standing on the shell's back edge.  The front end slopes
+# back into the wall at 45 deg so the face-down orientation works too.  Drawn
+# in XZ for the +X wall, overlapping into it, then turned onto its own wall.
+x0, xw = POCKET / 2 - BOSS, POCKET / 2 + 0.5
+taper = Plane.XZ * Polygon(
+    (x0, BACK_T),
+    (xw, BACK_T),
+    (xw, Z_BOSS + xw - x0),
+    (x0, Z_BOSS),
+    align=None,
+)
+taper = extrude(taper, amount=BOSS / 2, both=True)
+for (a, s), (bx, by) in zip(boss_at, screw_pts):
+    shell += Rot(0, 0, a) * Pos(0, s, 0) * taper
+    shell -= Pos(bx, by, BACK_T) * Cylinder(PILOT_D / 2, PILOT_L, align=(C, C, MIN))
 
-wall_x = POCKET / 2 + WALL / 2  # USB access, +X wall
-for cy in (MCU_Y, -MCU_Y):  # the two modules, on top
-    shell -= fbox(WALL + 2, USB_W, *MCU_SLOT, cx=wall_x, cy=cy)
-shell -= fbox(WALL + 2, USB_W, *PD_SLOT, cx=wall_x)  # PD trigger, underneath
+wall_x = POCKET / 2 + WALL / 2  # power input, +X wall
+shell -= fbox(WALL + 2, USB_W, *PD_SLOT, cx=wall_x, cy=PD_Y)
 
 # Break the window edge: of the front-face edges, keep only the four that
 # bound the bezel opening (the outer ones are already chamfered).
@@ -309,18 +352,15 @@ shell = chamfer(ShapeList(e for e in front if abs(e.length - WIN) < 0.5), CH_WIN
 # ---------------------------------------------------------------------------
 # Light grid: 8x8 cells on the LED pitch, clipped to leave an even rim
 # ---------------------------------------------------------------------------
-# One slab, minus the union of all 64 cell openings.  The outer cells are wider
-# than the slab leaves room for, so the union is clipped to the rim first.
+# One slab, minus everything inside the rim that is not a gridline wall, so
+# the outer cells run out to the rim whatever the pitch.
 grid = fbox(GRID_XY, GRID_XY, Z_GRID, Z_GRID + GRID_H)
-CELL = PITCH - GRID_W
-cells = None
-for i in range(8):
-    for j in range(8):
-        cx, cy = (i - 3.5) * PITCH, (j - 3.5) * PITCH  # LED centres
-        cell = fbox(CELL, CELL, Z_GRID - 1, Z_GRID + GRID_H + 1, cx=cx, cy=cy)
-        cells = cell if cells is None else cells + cell
 inner = GRID_XY - 2 * GRID_RIM
-grid -= cells & fbox(inner, inner, Z_GRID - 2, Z_GRID + GRID_H + 2)
+cells = fbox(inner, inner, Z_GRID - 1, Z_GRID + GRID_H + 1)
+for k in range(1, 8):  # inner gridlines, between LED rows and columns
+    cells -= fbox(GRID_W, GRID_XY, Z_GRID - 2, Z_GRID + GRID_H + 2, cx=(k - 4) * PITCH)
+    cells -= fbox(GRID_XY, GRID_W, Z_GRID - 2, Z_GRID + GRID_H + 2, cy=(k - 4) * PITCH)
+grid -= cells
 
 # Clear the caps: a channel up from the panel face along every column
 # gridline, rim included, and along the capped row gridlines.
@@ -337,12 +377,16 @@ diffuser = fbox(DIFF_XY, DIFF_XY, Z_DIFF, Z_DIFF + DIFF_T)
 # ---------------------------------------------------------------------------
 # Back plate: board mounts, vents, leg grooves
 # ---------------------------------------------------------------------------
-plate = fbox(PLATE_XY, PLATE_XY, 0, BACK_T)
-plate = fillet(plate.edges().filter_by(Axis.Z), R_CORNER - 1.0)
+plate = fbox(OUT, OUT, 0, BACK_T)  # flush with the shell all round
+plate = fillet(plate.edges().filter_by(Axis.Z), R_CORNER)
+plate = chamfer(plate.edges().group_by(Axis.Z)[0], CH_BACK)
 
-for px, py in post_pts:  # screw clearance, counterbored from the desk side
-    plate -= Pos(px, py, -1) * Cylinder(SCREW_D / 2, BACK_T + 2, align=(C, C, MIN))
-    plate -= Pos(px, py, -1) * Cylinder(HEAD_D / 2, HEAD_Z + 1, align=(C, C, MIN))
+for px, py in post_pts:  # panel rests: the plate prints back-down, so they
+    plate += fbox(POST, POST, BACK_T, Z_PCB, cx=px, cy=py)  # grow straight up
+
+for bx, by in screw_pts:  # screw clearance, counterbored from the desk side
+    plate -= Pos(bx, by, -1) * Cylinder(SCREW_D / 2, BACK_T + 2, align=(C, C, MIN))
+    plate -= Pos(bx, by, -1) * Cylinder(HEAD_D / 2, HEAD_Z + 1, align=(C, C, MIN))
 
 for mx, my in mount_pts:  # perfboard standoffs, pilot drilled from the top
     plate += Pos(mx, my, BACK_T) * Cylinder(STANDOFF_R, STANDOFF, align=(C, C, MIN))
@@ -355,7 +399,7 @@ for vx in VENT_X:  # vents beside the board
     plate -= fbox(VENT_W, vent_l, -1, BACK_T + 1, cx=vx, cy=vent_y)
 
 for cy in rail_ys:  # leg grooves, slide in from -X
-    plate -= rail(cy, NECK, HEAD, RAIL_Z, -PLATE_XY / 2 - 1, RAIL_END, lead=0.8)
+    plate -= rail(cy, NECK, HEAD, RAIL_Z, -OUT / 2 - 1, RAIL_END, lead=0.8)
 
 # ---------------------------------------------------------------------------
 # Leg: right triangle, hypotenuse on the desk, dovetails into the plate
@@ -402,9 +446,6 @@ for mx, my in mount_pts:
     )
 
 
-USB_C = (9.0, 7.3, 3.2)  # receptacle shell: length, width, height
-
-
 def board(size, thick, cx, cy, z0, usb=USB_C):
     """Module footprint plus the USB-C shell poking out of its +X end."""
     b = fbox(size[0], size[1], z0, z0 + thick, cx=cx, cy=cy)
@@ -413,13 +454,14 @@ def board(size, thick, cx, cy, z0, usb=USB_C):
     return b
 
 
-mcu_hi = board(MCU, MCU_PCB, MOD_X, MCU_Y, Z_MOD + MCU_LIFT)
-mcu_lo = board(MCU, MCU_PCB, MOD_X, -MCU_Y, Z_MOD + MCU_LIFT)
-# Trigger under the board: envelope only, port centred in the gap.
-pd = fbox(PD[0], PD[1], Z_PERF - PD[2], Z_PERF, cx=PD_X)
-pd_port_z = Z_PERF - PD[2] / 2
+Z_MCU = Z_MOD + MCU_PORT_Z - MCU_PCB  # module PCB underside
+mcu_hi = board(MCU, MCU_PCB, MOD_X, MCU_Y_HI, Z_MCU)
+mcu_lo = board(MCU, MCU_PCB, MOD_X, MCU_Y_LO, Z_MCU)
+# Trigger under the board, upside down: its port faces the plate.
+z_pd = Z_PERF - PD_PORT_Z + USB_C[2]  # PD PCB underside, port side
+pd = fbox(*PD, z_pd, z_pd + PD_PCB, cx=PD_X, cy=PD_Y)
 pd_port_x = PD_X + PD[0] / 2 - USB_C[0] / 2 + 1.0
-pd += fbox(*USB_C[:2], pd_port_z - USB_C[2] / 2, pd_port_z + USB_C[2] / 2, cx=pd_port_x)
+pd += fbox(*USB_C[:2], z_pd - USB_C[2], z_pd, cx=pd_port_x, cy=PD_Y)
 
 # ---------------------------------------------------------------------------
 # Part tables: what gets exported, and how the browser viewer draws it

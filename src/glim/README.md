@@ -15,7 +15,7 @@ DDP over UDP ──> rx (ESP32-C3) ──I2C──> tx (RP2040) ──WS2812─�
 
 Both boards sit on one 40 x 60 mm perfboard behind the panel, powered through a
 USB-C PD trigger. The stand tilts the panel 25 deg off vertical and is
-71.8 x 71.8 x 30.7 mm.
+71.8 x 71.8 x 39.9 mm.
 
 ## Build
 

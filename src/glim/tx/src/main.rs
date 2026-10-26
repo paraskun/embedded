@@ -25,7 +25,7 @@ async fn main(_spawner: Spawner) {
     let mut led = led::Screen::new(
         dma::Channel::new(hal.DMA_CH0, Irqs),
         pio::Pio::new(hal.PIO0, Irqs),
-        hal.PIN_19,
+        hal.PIN_13,
         hal.PWM_SLICE0,
         hal.PIN_1);
 

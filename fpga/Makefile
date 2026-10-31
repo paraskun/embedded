@@ -49,5 +49,10 @@ $(eval $(call sim_rules,sum4,   sum/sum.sv sum/cla4.sv sum/sum4.sv sum/tb_sum4.s
 $(eval $(call sim_rules,sum16,  sum/sum.sv sum/cla4.sv sum/sum4.sv sum/sum16.sv sum/tb_sum16.sv))
 $(eval $(call sim_rules,sum64,  sum/sum.sv sum/cla4.sv sum/sum4.sv sum/sum16.sv sum/sum64.sv sum/tb_sum64.sv))
 $(eval $(call sim_rules,sum64x3,  sum/sum.sv sum/cla4.sv sum/sum4.sv sum/sum16.sv sum/sum64.sv sum/sum64x3.sv sum/tb_sum64x3.sv))
+
 $(eval $(call sim_rules,ff,  mem/ff.sv mem/tb_ff.sv))
 $(eval $(call sim_rules,sr,  mem/sr.sv mem/tb_sr.sv))
+
+$(eval $(call sim_rules,cnt,  cnt/cnt.sv cnt/tb_cnt.sv))
+$(eval $(call sim_rules,cnt4, cnt/cnt4.sv cnt/tb_cnt4.sv))
+$(eval $(call sim_rules,cnt5, cnt/cnt5.sv cnt/tb_cnt5.sv))

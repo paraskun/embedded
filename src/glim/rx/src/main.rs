@@ -4,27 +4,30 @@
 mod ddp;
 mod cap;
 
+use core::fmt::{Debug, Display};
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
-use edge_nal_embassy::{Udp, UdpBuffers};
-use edge_nal::UdpBind;
+use edge_http::Method;
+use edge_http::io::Error as HttpError;
+use edge_http::io::server::{Connection, Handler, Server as HttpServer};
+use edge_nal::{TcpBind, UdpBind};
+use edge_nal_embassy::{Tcp, TcpBuffers, Udp, UdpBuffers};
 
 use embassy_executor::Spawner;
 use embassy_futures::select;
-use embassy_net::tcp::TcpSocket;
 use embassy_net::{Ipv4Cidr, Stack, StackResources};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::i2c;
 use esp_hal::{Async, i2c::master::I2c, time::Rate};
 
-use embedded_io_async::Write;
+use embedded_io_async::{Read, Write};
 use esp_radio::wifi::Config::AccessPointStation;
 use esp_radio::wifi::ControllerConfig;
 use esp_radio::wifi::ap::AccessPointConfig;
@@ -197,89 +200,161 @@ async fn task_cap(
     stack: Stack<'static>,
     snd: Sender<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 ) {
-    let mut rx = [0u8; 1024];
-    let mut tx = [0u8; 1024];
+    let buffers = TcpBuffers::<1, 1024, 1024>::new();
+    let tcp = Tcp::new(stack, &buffers);
+    let acceptor = tcp
+        .bind(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            80,
+        )))
+        .await
+        .unwrap();
+
+    let mut server = HttpServer::<1, 1024, 16>::new();
 
     loop {
-        let mut sock = TcpSocket::new(stack, &mut rx, &mut tx);
-        sock.set_timeout(Some(Duration::from_secs(3)));
+        let acceptor = edge_nal::WithTimeout::new(3000, acceptor);
+        let handler = CapHandler { snd };
 
-        if let Err(_) = sock.accept(80).await {
-            continue;
+        if let Err(e) = server.run(Some(3000), acceptor, handler).await {
+            esp_println::println!("http error: {:?}", e);
+            Timer::after_millis(500).await;
         }
-
-        let mut buf = [0u8; 1024];
-        let mut len = 0;
-
-        loop {
-            match sock.read(&mut buf[len..]).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    len += n;
-
-                    if buf[..len].windows(4).any(|w| w == b"\r\n\r\n") || len == buf.len() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-
-        let req = core::str::from_utf8(&buf[..len]).unwrap_or("");
-        let path = req.split_whitespace().nth(1).unwrap_or("/");
-
-        match path {
-            "/" => {
-                let mut hdr = [0u8; 128];
-                let n = fmt_200(&mut hdr, PAGE.len());
-                sock.write_all(&hdr[..n]).await.unwrap();
-                sock.write_all(PAGE).await.unwrap();
-            }
-            _ => {
-                if path.starts_with("/set") {
-                    let mut tok = path.split("/");
-
-                    let _ = tok.next();
-                    let _ = tok.next();
-                    let ssid = tok.next().unwrap();
-                    let pass = tok.next().unwrap();
-
-                    sock.write_all("
-                        HTTP/1.1 204 No Content\r\n\
-                        Connection: close\r\n\
-                        \r\n".as_bytes()).await.unwrap();
-
-                    esp_println::println!("Received credentials: {} / {}",
-                        ssid, pass);
-
-                    snd.send(cap::Credentials::new(ssid, pass)).await;
-                }
-            }
-        }
-
-        let _ = sock.flush().await;
-        sock.close();
     }
 }
 
-fn fmt_200(buf: &mut [u8], content_len: usize) -> usize {
-    use core::fmt::Write;
-    let mut w = BufWriter { buf, pos: 0 };
-    write!(w, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Encoding: gzip\r\nContent-Length: {content_len}\r\nConnection: close\r\n\r\n").unwrap();
-    w.pos
+struct CapHandler {
+    snd: Sender<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 }
 
-struct BufWriter<'a> {
-    buf: &'a mut [u8],
-    pos: usize,
-}
+impl Handler for CapHandler {
+    type Error<E>
+        = HttpError<E>
+    where
+        E: Debug;
 
-impl core::fmt::Write for BufWriter<'_> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let bytes = s.as_bytes();
-        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
-        self.pos += bytes.len();
+    async fn handle<T, const N: usize>(
+        &self,
+        _task_id: impl Display + Copy,
+        conn: &mut Connection<'_, T, N>,
+    ) -> Result<(), Self::Error<T::Error>>
+    where
+        T: Read + Write,
+    {
+        let headers = conn.headers()?;
+
+        if headers.method != Method::Get {
+            conn.initiate_response(
+                405,
+                Some("Method Not Allowed"),
+                &[("Connection", "close")],
+            )
+            .await?;
+            return Ok(());
+        }
+
+        match headers.path {
+            "/" => {
+                conn.initiate_response(
+                    200,
+                    Some("OK"),
+                    &[
+                        ("Content-Type", "text/html"),
+                        ("Content-Encoding", "gzip"),
+                        ("Connection", "close"),
+                    ],
+                )
+                .await?;
+                conn.write_all(PAGE).await?;
+            }
+            path => match parse_credentials(path) {
+                Some(cred) => {
+                    esp_println::println!("Request at: {}", path);
+                    esp_println::println!(
+                        "Received credentials: {} / {}",
+                        cred.ssid(),
+                        cred.pass()
+                    );
+
+                    conn.initiate_response(
+                        204,
+                        Some("No Content"),
+                        &[("Connection", "close")],
+                    )
+                    .await?;
+                    self.snd.send(cred).await;
+                }
+                None if path.starts_with("/set/") => {
+                    conn.initiate_response(
+                        400,
+                        Some("Bad Request"),
+                        &[("Connection", "close")],
+                    )
+                    .await?;
+                }
+                None => {
+                    conn.initiate_response(
+                        404,
+                        Some("Not Found"),
+                        &[("Connection", "close")],
+                    )
+                    .await?;
+                }
+            },
+        }
+
         Ok(())
+    }
+}
+
+fn parse_credentials(path: &str) -> Option<cap::Credentials> {
+    let params = path.strip_prefix("/set/")?;
+    let (ssid, pass) = params.split_once('/')?;
+
+    if ssid.is_empty() || pass.contains('/') {
+        return None;
+    }
+
+    let mut ssid_buf = [0; 32];
+    let mut pass_buf = [0; 64];
+    let ssid = percent_decode(ssid, &mut ssid_buf)?;
+    let pass = percent_decode(pass, &mut pass_buf)?;
+
+    Some(cap::Credentials::new(ssid, pass))
+}
+
+fn percent_decode<'a>(value: &str, buf: &'a mut [u8]) -> Option<&'a str> {
+    let bytes = value.as_bytes();
+    let mut pos = 0;
+    let mut len = 0;
+
+    while pos < bytes.len() {
+        if len == buf.len() {
+            return None;
+        }
+
+        buf[len] = if bytes[pos] == b'%' {
+            let high = hex(*bytes.get(pos + 1)?)?;
+            let low = hex(*bytes.get(pos + 2)?)?;
+            pos += 3;
+            (high << 4) | low
+        } else {
+            let byte = bytes[pos];
+            pos += 1;
+            byte
+        };
+        len += 1;
+    }
+
+    core::str::from_utf8(&buf[..len]).ok()
+}
+
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -290,6 +365,8 @@ async fn task_ddp(stack: Stack<'static>, mut i2c: I2c<'static, Async>) {
 
     loop {
         srv.recv(&mut pkt).await;
+
+        esp_println::println!("Recevied");
 
         let body: &[u8] = unsafe { bytemuck::cast_slice(&pkt.body.rgb) };
         let tx = &body[..pkt.header.size as usize];

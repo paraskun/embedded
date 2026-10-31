@@ -32,7 +32,7 @@ pub struct Header {
 
 #[derive(Copy, Clone)]
 pub union Body {
-    pub rgb: [RGB; 128],
+    pub rgb: [RGB; 512],
 }
 
 pub struct Packet {
@@ -44,7 +44,7 @@ impl Default for Packet {
     fn default() -> Self {
         Self { 
             header: Header::default(),
-            body: Body { rgb: [RGB::default(); 128] },
+            body: Body { rgb: [RGB::default(); 512] },
         }
     }
 }

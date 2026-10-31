@@ -39,7 +39,7 @@ async fn main(_spawner: Spawner) {
         Irqs,
         cfg);
 
-    let mut frame = [0u8; 192];
+    let mut frame = [0u8; 384];
 
     loop {
         match dev.listen(&mut frame).await {

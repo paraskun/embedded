@@ -20,6 +20,7 @@ embassy-sync = { workspace = true }
 embassy-futures = { workspace = true }
 
 edge-dhcp = { workspace = true }
+edge-http = { workspace = true }
 edge-nal = { workspace = true }
 edge-nal-embassy = { workspace = true }
 

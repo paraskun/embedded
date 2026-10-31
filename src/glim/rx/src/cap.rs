@@ -28,8 +28,8 @@ impl<'a> Credentials {
 }
 
 pub fn default() -> Credentials {
-    let ssid = "default";
-    let pass = "default";
+    let ssid = "KaHypa";
+    let pass = "diy@or@die";
 
     let mut cred = Credentials { ssid: [0; 256], ssid_len: 0, pass: [0; 256], pass_len: 0 };
     cred.ssid[..ssid.len()].copy_from_slice(ssid.as_bytes());

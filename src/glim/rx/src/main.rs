@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
 
+extern crate alloc;
+
 mod ddp;
 mod cap;
 
@@ -8,23 +10,22 @@ use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
-use edge_nal_embassy::{Udp, UdpBuffers};
-use edge_nal::UdpBind;
+use edge_http::io::server::Server as HttpServer;
+use edge_nal::{TcpBind, UdpBind};
+use edge_nal_embassy::{Tcp, TcpBuffers, Udp, UdpBuffers};
 
 use embassy_executor::Spawner;
 use embassy_futures::select;
-use embassy_net::tcp::TcpSocket;
 use embassy_net::{Ipv4Cidr, Stack, StackResources};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::i2c;
 use esp_hal::{Async, i2c::master::I2c, time::Rate};
 
-use embedded_io_async::Write;
 use esp_radio::wifi::Config::AccessPointStation;
 use esp_radio::wifi::ControllerConfig;
 use esp_radio::wifi::ap::AccessPointConfig;
@@ -71,14 +72,13 @@ async fn main(spawner: Spawner) {
     let wifi_ap = esp_radio::wifi::Interface::access_point();
 
     let rng = esp_hal::rng::Rng::new();
-    let seed = (rng.random() as u64) << 32 | (rng.random() as u64);
     let gway = Ipv4Addr::new(192, 168, 0, 1);
 
     let (st_stack, st_runner) = embassy_net::new(
         wifi_st,
         embassy_net::Config::dhcpv4(Default::default()),
         ST_SR.init(StackResources::new()),
-        seed);
+        (rng.random() as u64) << 32 | (rng.random() as u64));
 
     let (ap_stack, ap_runner) = embassy_net::new(
         wifi_ap,
@@ -88,7 +88,7 @@ async fn main(spawner: Spawner) {
             dns_servers: Default::default(),
         }),
         AP_SR.init(StackResources::new()),
-        seed);
+        (rng.random() as u64) << 32 | (rng.random() as u64));
 
     spawner.spawn(task_net(st_runner).unwrap());
     spawner.spawn(task_net(ap_runner).unwrap());
@@ -97,15 +97,14 @@ async fn main(spawner: Spawner) {
     ap_stack.wait_config_up().await;
 
     spawner.spawn(task_dhcp(ap_stack, gway).unwrap());
-    spawner.spawn(task_cap(ap_stack, CHAN.sender()).unwrap());
+    spawner.spawn(task_cap(ap_stack, st_stack, CHAN.sender()).unwrap());
     spawner.spawn(task_ddp(st_stack, bus).unwrap());
 
     loop {
         st_stack.wait_config_up().await;
-        ap_stack.wait_config_up().await;
 
         if let Some(config) = st_stack.config_v4() {
-            esp_println::println!("Got IP: {}", config.address);
+            esp_println::println!("sta ip: {}", config.address);
         }
 
         st_stack.wait_config_down().await;
@@ -122,7 +121,7 @@ async fn task_mmt(
     mut ctl: esp_radio::wifi::WifiController<'static>,
     rcv: Receiver<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 ) {
-    let mut cred = cap::default();
+    let mut cred = cap::Credentials::default();
     let mut apply = true;
     let mut connected = false;
 
@@ -140,7 +139,7 @@ async fn task_mmt(
 
             if ctl.set_config(&AccessPointStation(st_conf, ap_conf())).is_ok() {
                 connected = ctl.connect_async().await.is_ok();
-                esp_println::println!("STA connect: {}", connected);
+                esp_println::println!("sta: {}", connected);
             }
         }
 
@@ -159,8 +158,6 @@ async fn task_mmt(
             cred = c;
             apply = true;
         }
-
-        Timer::after_millis(1000).await;
     }
 }
 
@@ -195,105 +192,60 @@ async fn task_dhcp(stack: Stack<'static>, ip: Ipv4Addr) {
 #[embassy_executor::task]
 async fn task_cap(
     stack: Stack<'static>,
+    sta: Stack<'static>,
     snd: Sender<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 ) {
-    let mut rx = [0u8; 1024];
-    let mut tx = [0u8; 1024];
+    let tcp_buf = TcpBuffers::<1, 1024, 1024>::new();
+    let tcp = Tcp::new(stack, &tcp_buf);
+
+    let acceptor = tcp.bind(SocketAddr::V4(SocketAddrV4::new(
+        Ipv4Addr::UNSPECIFIED,
+        80,
+    ))).await.unwrap();
+
+    let mut srv = HttpServer::<1, 1024, 16>::new();
 
     loop {
-        let mut sock = TcpSocket::new(stack, &mut rx, &mut tx);
-        sock.set_timeout(Some(Duration::from_secs(3)));
+        let acceptor = edge_nal::WithTimeout::new(3000, acceptor);
+        let handler = cap::CaptureHandler { snd, sta };
 
-        if let Err(_) = sock.accept(80).await {
-            continue;
+        if let Err(e) = srv.run(Some(3000), acceptor, handler).await {
+            esp_println::println!("http error: {:?}", e);
+            Timer::after_millis(500).await;
         }
-
-        let mut buf = [0u8; 1024];
-        let mut len = 0;
-
-        loop {
-            match sock.read(&mut buf[len..]).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    len += n;
-
-                    if buf[..len].windows(4).any(|w| w == b"\r\n\r\n") || len == buf.len() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-
-        let req = core::str::from_utf8(&buf[..len]).unwrap_or("");
-        let path = req.split_whitespace().nth(1).unwrap_or("/");
-
-        match path {
-            "/" => {
-                let mut hdr = [0u8; 128];
-                let n = fmt_200(&mut hdr, PAGE.len());
-                sock.write_all(&hdr[..n]).await.unwrap();
-                sock.write_all(PAGE).await.unwrap();
-            }
-            _ => {
-                if path.starts_with("/set") {
-                    let mut tok = path.split("/");
-
-                    let _ = tok.next();
-                    let _ = tok.next();
-                    let ssid = tok.next().unwrap();
-                    let pass = tok.next().unwrap();
-
-                    sock.write_all("
-                        HTTP/1.1 204 No Content\r\n\
-                        Connection: close\r\n\
-                        \r\n".as_bytes()).await.unwrap();
-
-                    esp_println::println!("Received credentials: {} / {}",
-                        ssid, pass);
-
-                    snd.send(cap::Credentials::new(ssid, pass)).await;
-                }
-            }
-        }
-
-        let _ = sock.flush().await;
-        sock.close();
-    }
-}
-
-fn fmt_200(buf: &mut [u8], content_len: usize) -> usize {
-    use core::fmt::Write;
-    let mut w = BufWriter { buf, pos: 0 };
-    write!(w, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Encoding: gzip\r\nContent-Length: {content_len}\r\nConnection: close\r\n\r\n").unwrap();
-    w.pos
-}
-
-struct BufWriter<'a> {
-    buf: &'a mut [u8],
-    pos: usize,
-}
-
-impl core::fmt::Write for BufWriter<'_> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let bytes = s.as_bytes();
-        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
-        self.pos += bytes.len();
-        Ok(())
     }
 }
 
 #[embassy_executor::task]
 async fn task_ddp(stack: Stack<'static>, mut i2c: I2c<'static, Async>) {
+    let pixels = loop {
+        let mut size = [0; 2];
+
+        match i2c.read_async(DA, &mut size).await {
+            Ok(()) => {
+                let pixels = u16::from_be_bytes(size);
+
+                if (1..=ddp::MAX_PIXELS).contains(&pixels) {
+                    break pixels;
+                }
+
+                esp_println::println!("invalid tx pixel count: {}", pixels);
+            }
+            Err(e) => esp_println::println!("tx pixel count error: {:?}", e),
+        }
+
+        Timer::after_millis(500).await;
+    };
+
+    esp_println::println!("tx pixels: {}", pixels);
+
     let mut srv = ddp::Listener::new(stack);
-    let mut pkt = ddp::Packet::default();
 
     loop {
-        srv.recv(&mut pkt).await;
-
-        let body: &[u8] = unsafe { bytemuck::cast_slice(&pkt.body.rgb) };
-        let tx = &body[..pkt.header.size as usize];
-
-        i2c.write_async(DA, tx).await.unwrap();
+        if let Some(frame) = srv.recv(pixels).await
+            && let Err(e) = i2c.write_async(DA, frame).await
+        {
+            esp_println::println!("tx frame error: {:?}", e);
+        }
     }
 }

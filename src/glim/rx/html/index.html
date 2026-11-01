@@ -80,7 +80,9 @@
 <body>
 <main>
   <h1>Connect Glim to Wi-Fi</h1>
-  <p class="hint">Enter the network the device should join.</p>
+  <p class="hint">Enter the network the device should join.<br>
+    Station IP: <strong id="sta-ip">Checking…</strong>
+  </p>
   <form id="f">
     <label>Network name (SSID)
       <input id="ssid" required maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
@@ -96,6 +98,19 @@
   const f = document.getElementById('f');
   const go = document.getElementById('go');
   const status = document.getElementById('status');
+  const staIp = document.getElementById('sta-ip');
+
+  async function refreshIp() {
+    try {
+      const r = await fetch('/ip', { cache: 'no-store' });
+      if (!r.ok) throw new Error('status request failed');
+      staIp.textContent = await r.text();
+    } catch (_) {
+      staIp.textContent = 'Unavailable';
+    }
+  }
+
+  refreshIp();
 
   function show(msg, cls) {
     status.textContent = msg;

@@ -20,6 +20,7 @@ embassy-sync = { workspace = true }
 embassy-futures = { workspace = true }
 
 edge-dhcp = { workspace = true }
+edge-http = { workspace = true }
 edge-nal = { workspace = true }
 edge-nal-embassy = { workspace = true }
 
@@ -35,7 +36,6 @@ embedded-io-async = { workspace = true }
 static_cell = { workspace = true }
 panic-halt = { workspace = true }
 panic-reset = { workspace = true }
-bytemuck = { version = "1.25.2", features = ["derive"] }
 
 [build-dependencies]
 flate2 = "1"

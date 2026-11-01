@@ -5,7 +5,8 @@ use embassy_time::Timer;
 use fixed::types::U24F8;
 use core::marker::PhantomData;
 
-const SCREEN_MAX: u16 = 1024;
+pub const MAX_PIXELS: usize = 1024;
+const SCREEN_MAX: u16 = MAX_PIXELS as u16;
 
 pub struct Screen<'d, PIO: pio::Instance, SLICE: pwm::Slice> {
     dma: dma::Channel<'d>,

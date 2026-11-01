@@ -30,6 +30,7 @@ embassy-net = { version = "0.9.1", features = [
 ] }
 
 edge-dhcp = "0.8.0"
+edge-http = "0.8.0"
 edge-nal = "0.7.0"
 edge-nal-embassy = "0.9.0"
 

@@ -18,9 +18,9 @@ module tb_sr();
     $dumpvars(0, tb_sr);
 
     sin = 0; q = 4'b0101; #80;
-    sin = 1; #20;
-    sin = 0; #20;
-    sin = 1; #20;
+    sin = 1;              #20;
+    sin = 0;              #20;
+    sin = 1;              #20;
       
   $finish;
   end

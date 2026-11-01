@@ -1,5 +1,6 @@
 use alloc::format;
 use core::fmt::{Debug, Display};
+use core::sync::atomic::Ordering;
 
 use edge_http::Method;
 use edge_http::io::Error as HttpError;
@@ -125,6 +126,8 @@ impl Handler for CaptureHandler {
             return Ok(());
         }
 
+        esp_println::println!("web: {}", headers.path);
+
         match headers.path {
             "/" => {
                 conn.initiate_response(
@@ -158,6 +161,25 @@ impl Handler for CaptureHandler {
                     conn.write_all(ip.as_bytes()).await?;
                 } else {
                     conn.write_all(b"Not acquired").await?;
+                }
+            }
+            "/pixels" => {
+                let pixels = crate::PIXELS.load(Ordering::Relaxed);
+
+                conn.initiate_response(
+                    200,
+                    Some("OK"),
+                    &[
+                        ("Content-Type", "text/plain"),
+                        ("Cache-Control", "no-store"),
+                        ("Connection", "close"),
+                    ],
+                ).await?;
+
+                if pixels > 0 {
+                    conn.write_all(format!("{}", pixels).as_bytes()).await?;
+                } else {
+                    conn.write_all(b"Unknown").await?;
                 }
             }
             path => match Credentials::parse(path) {

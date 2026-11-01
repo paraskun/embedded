@@ -1924,6 +1924,7 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "esp-storage",
  "flate2",
  "panic-halt 1.0.0",
  "panic-reset",

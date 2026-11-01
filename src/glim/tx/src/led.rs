@@ -7,12 +7,13 @@ use core::marker::PhantomData;
 
 pub const MAX_PIXELS: usize = 1024;
 const SCREEN_MAX: u16 = MAX_PIXELS as u16;
+const EDGES_PER_PIXEL: u16 = 24;
 
 pub struct Screen<'d, PIO: pio::Instance, SLICE: pwm::Slice> {
     dma: dma::Channel<'d>,
     sm0: pio::StateMachine<'d, PIO, 0>,
     counter: Pwm<'d>,
-    frame: [u32; SCREEN_MAX as usize],
+    frame: [u32; SCREEN_MAX as usize + 1],
 
     _slice: PhantomData<SLICE>,
 }
@@ -54,12 +55,12 @@ impl<'d, PIO: pio::Instance, SLICE: pwm::Slice> Screen<'d, PIO, SLICE> {
             dma: dma,
             sm0: sm0,
             counter: counter,
-            frame: [0; SCREEN_MAX as usize],
+            frame: [0; SCREEN_MAX as usize + 1],
             _slice: PhantomData
         }
     }
 
-    pub async fn size(&mut self) -> u16 {
+    pub async fn size(&mut self) -> Option<u16> {
         self.counter.set_counter(0);
 
         let v: u32 = (5 << 24) | (5 << 16) | (5 << 8);
@@ -69,16 +70,34 @@ impl<'d, PIO: pio::Instance, SLICE: pwm::Slice> Screen<'d, PIO, SLICE> {
 
         Timer::after_millis(50).await;
 
-        SCREEN_MAX - (self.counter.counter() / 24)
+        let edges = self.counter.counter();
+
+        if edges == 0 {
+            None
+        } else {
+            Some(SCREEN_MAX - (edges / EDGES_PER_PIXEL))
+        }
     }
 
-    pub async fn push(&mut self, frame: &[u8]) {
+    pub async fn push(&mut self, frame: &[u8]) -> bool {
+        let pixels = frame.len() / 3;
+        let cols = pixels / 8;
+
         for (i, ch) in frame.chunks_exact(3).enumerate() {
-            self.frame[i] = (u32::from(ch[1]) << 24)
+            let (row, col) = (i / cols, i % cols);
+            let j = (col / 8) * 64 + row * 8 + (col % 8);
+
+            self.frame[j] = (u32::from(ch[1]) << 24)
                           | (u32::from(ch[0]) << 16)
                           | (u32::from(ch[2]) << 8);
         }
 
-        self.sm0.tx().dma_push(&mut self.dma, &self.frame[..(frame.len() / 3)], false).await;
+        self.frame[pixels] = 0;
+
+        self.counter.set_counter(0);
+        self.sm0.tx().dma_push(&mut self.dma, &self.frame[..pixels + 1], false).await;
+        Timer::after_millis(1).await;
+
+        self.counter.counter() == EDGES_PER_PIXEL
     }
 }

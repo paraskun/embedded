@@ -31,6 +31,7 @@ esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32c3"] }
 esp-alloc = { version = "0.11.0", features = ["esp32c3", "global-allocator", "compat"] }
 esp-backtrace = { version = "0.20.0", features = ["esp32c3", "panic-handler", "defmt"] }
 esp-println = { version = "0.18.0", features = ["esp32c3", "defmt-espflash"] }
+esp-storage = { version = "0.10.0", features = ["esp32c3"] }
 
 embedded-io-async = { workspace = true }
 static_cell = { workspace = true }

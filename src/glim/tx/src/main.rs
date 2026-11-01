@@ -26,8 +26,8 @@ async fn main(_spawner: Spawner) {
         dma::Channel::new(hal.DMA_CH0, Irqs),
         pio::Pio::new(hal.PIO0, Irqs),
         hal.PIN_13,
-        hal.PWM_SLICE0,
-        hal.PIN_1);
+        hal.PWM_SLICE7,
+        hal.PIN_15);
 
     let mut cfg = i2c_slave::Config::default();
     cfg.addr = DA as u16;
@@ -39,9 +39,14 @@ async fn main(_spawner: Spawner) {
         Irqs,
         cfg);
 
-    let pixels = led.size().await;
-    let size = pixels.to_be_bytes();
-    let frame_size = usize::from(pixels) * 3;
+    let mut pixels = loop {
+        if let Some(pixels) = led.size().await {
+            break pixels;
+        }
+    };
+
+    let mut size = pixels.to_be_bytes();
+    let mut frame_size = usize::from(pixels) * 3;
     let mut frame = [0u8; led::MAX_PIXELS * 3];
 
     loop {
@@ -51,7 +56,13 @@ async fn main(_spawner: Spawner) {
             }
             Ok(i2c_slave::Command::Write(n))
             | Err(i2c_slave::Error::PartialWrite(n)) if n == frame_size => {
-                led.push(&frame[..n]).await;
+                if !led.push(&frame[..n]).await
+                    && let Some(new) = led.size().await
+                {
+                    pixels = new;
+                    size = pixels.to_be_bytes();
+                    frame_size = usize::from(pixels) * 3;
+                }
             }
             _ => (),
         }

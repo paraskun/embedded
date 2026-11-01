@@ -5,8 +5,10 @@ extern crate alloc;
 
 mod ddp;
 mod cap;
+mod nvm;
 
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use core::sync::atomic::{AtomicU16, Ordering};
 
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
@@ -36,6 +38,7 @@ static DA: u8 = 0x42;
 static ST_SR: StaticCell<StackResources<3>> = StaticCell::new();
 static AP_SR: StaticCell<StackResources<3>> = StaticCell::new();
 static CHAN: Channel<CriticalSectionRawMutex, cap::Credentials, 1> = Channel::new();
+pub static PIXELS: AtomicU16 = AtomicU16::new(0);
 static PAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"));
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -61,6 +64,9 @@ async fn main(spawner: Spawner) {
         .with_scl(hal.GPIO9)
         .with_sda(hal.GPIO8)
         .into_async();
+
+    let mut flash = esp_storage::FlashStorage::new(hal.FLASH);
+    let cred = nvm::load(&mut flash).unwrap_or_else(cap::Credentials::default);
 
     let wifi_cfg = esp_radio::wifi::Config::AccessPointStation(
         StationConfig::default(), ap_conf());
@@ -92,7 +98,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(task_net(st_runner).unwrap());
     spawner.spawn(task_net(ap_runner).unwrap());
-    spawner.spawn(task_mmt(wifi_ctl, CHAN.receiver()).unwrap());
+    spawner.spawn(task_mmt(wifi_ctl, CHAN.receiver(), cred, flash).unwrap());
 
     ap_stack.wait_config_up().await;
 
@@ -120,9 +126,11 @@ async fn task_net(mut runner: embassy_net::Runner<'static, esp_radio::wifi::Inte
 async fn task_mmt(
     mut ctl: esp_radio::wifi::WifiController<'static>,
     rcv: Receiver<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
+    mut cred: cap::Credentials,
+    mut flash: esp_storage::FlashStorage<'static>,
 ) {
-    let mut cred = cap::Credentials::default();
     let mut apply = true;
+    let mut save = false;
     let mut connected = false;
 
     loop {
@@ -131,6 +139,11 @@ async fn task_mmt(
             connected = false;
 
             let _ = ctl.disconnect_async().await;
+
+            if save {
+                save = false;
+                nvm::store(&mut flash, &cred);
+            }
 
             let st_conf = StationConfig::default()
                 .with_ssid(cred.ssid().try_into().unwrap())
@@ -150,13 +163,14 @@ async fn task_mmt(
                     Timer::after_secs(2).await;
                     apply = true;
                 }
-                select::Either::Second(c) => { cred = c; apply = true; }
+                select::Either::Second(c) => { cred = c; apply = true; save = true; }
             }
         } else {
             let c = rcv.receive().await;
 
             cred = c;
             apply = true;
+            save = true;
         }
     }
 }
@@ -216,36 +230,54 @@ async fn task_cap(
     }
 }
 
+async fn read_pixels(i2c: &mut I2c<'static, Async>) -> Option<u16> {
+    let mut size = [0; 2];
+
+    match i2c.read_async(DA, &mut size).await {
+        Ok(()) => {
+            let pixels = u16::from_be_bytes(size);
+
+            if (1..=ddp::MAX_PIXELS).contains(&pixels) {
+                return Some(pixels);
+            }
+
+            esp_println::println!("invalid tx pixel count: {}", pixels);
+        }
+        Err(e) => esp_println::println!("tx pixel count error: {:?}", e),
+    }
+
+    None
+}
+
 #[embassy_executor::task]
 async fn task_ddp(stack: Stack<'static>, mut i2c: I2c<'static, Async>) {
-    let pixels = loop {
-        let mut size = [0; 2];
-
-        match i2c.read_async(DA, &mut size).await {
-            Ok(()) => {
-                let pixels = u16::from_be_bytes(size);
-
-                if (1..=ddp::MAX_PIXELS).contains(&pixels) {
-                    break pixels;
-                }
-
-                esp_println::println!("invalid tx pixel count: {}", pixels);
-            }
-            Err(e) => esp_println::println!("tx pixel count error: {:?}", e),
+    let mut pixels = loop {
+        if let Some(pixels) = read_pixels(&mut i2c).await {
+            break pixels;
         }
 
         Timer::after_millis(500).await;
     };
 
     esp_println::println!("tx pixels: {}", pixels);
+    PIXELS.store(pixels, Ordering::Relaxed);
 
     let mut srv = ddp::Listener::new(stack);
 
     loop {
-        if let Some(frame) = srv.recv(pixels).await
-            && let Err(e) = i2c.write_async(DA, frame).await
-        {
-            esp_println::println!("tx frame error: {:?}", e);
+        if let Some(frame) = srv.recv(pixels).await {
+            if let Err(e) = i2c.write_async(DA, frame).await {
+                esp_println::println!("tx frame error: {:?}", e);
+                continue;
+            }
+
+            if let Some(new) = read_pixels(&mut i2c).await
+                && new != pixels
+            {
+                esp_println::println!("tx pixels: {}", new);
+                pixels = new;
+                PIXELS.store(new, Ordering::Relaxed);
+            }
         }
     }
 }

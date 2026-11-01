@@ -1,17 +1,16 @@
 #![no_main]
 #![no_std]
 
+extern crate alloc;
+
 mod ddp;
 mod cap;
 
-use core::fmt::{Debug, Display};
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
-use edge_http::Method;
-use edge_http::io::Error as HttpError;
-use edge_http::io::server::{Connection, Handler, Server as HttpServer};
+use edge_http::io::server::Server as HttpServer;
 use edge_nal::{TcpBind, UdpBind};
 use edge_nal_embassy::{Tcp, TcpBuffers, Udp, UdpBuffers};
 
@@ -27,7 +26,6 @@ use esp_backtrace as _;
 use esp_hal::i2c;
 use esp_hal::{Async, i2c::master::I2c, time::Rate};
 
-use embedded_io_async::{Read, Write};
 use esp_radio::wifi::Config::AccessPointStation;
 use esp_radio::wifi::ControllerConfig;
 use esp_radio::wifi::ap::AccessPointConfig;
@@ -74,14 +72,13 @@ async fn main(spawner: Spawner) {
     let wifi_ap = esp_radio::wifi::Interface::access_point();
 
     let rng = esp_hal::rng::Rng::new();
-    let seed = (rng.random() as u64) << 32 | (rng.random() as u64);
     let gway = Ipv4Addr::new(192, 168, 0, 1);
 
     let (st_stack, st_runner) = embassy_net::new(
         wifi_st,
         embassy_net::Config::dhcpv4(Default::default()),
         ST_SR.init(StackResources::new()),
-        seed);
+        (rng.random() as u64) << 32 | (rng.random() as u64));
 
     let (ap_stack, ap_runner) = embassy_net::new(
         wifi_ap,
@@ -91,7 +88,7 @@ async fn main(spawner: Spawner) {
             dns_servers: Default::default(),
         }),
         AP_SR.init(StackResources::new()),
-        seed);
+        (rng.random() as u64) << 32 | (rng.random() as u64));
 
     spawner.spawn(task_net(st_runner).unwrap());
     spawner.spawn(task_net(ap_runner).unwrap());
@@ -100,15 +97,14 @@ async fn main(spawner: Spawner) {
     ap_stack.wait_config_up().await;
 
     spawner.spawn(task_dhcp(ap_stack, gway).unwrap());
-    spawner.spawn(task_cap(ap_stack, CHAN.sender()).unwrap());
+    spawner.spawn(task_cap(ap_stack, st_stack, CHAN.sender()).unwrap());
     spawner.spawn(task_ddp(st_stack, bus).unwrap());
 
     loop {
         st_stack.wait_config_up().await;
-        ap_stack.wait_config_up().await;
 
         if let Some(config) = st_stack.config_v4() {
-            esp_println::println!("Got IP: {}", config.address);
+            esp_println::println!("sta ip: {}", config.address);
         }
 
         st_stack.wait_config_down().await;
@@ -125,7 +121,7 @@ async fn task_mmt(
     mut ctl: esp_radio::wifi::WifiController<'static>,
     rcv: Receiver<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 ) {
-    let mut cred = cap::default();
+    let mut cred = cap::Credentials::default();
     let mut apply = true;
     let mut connected = false;
 
@@ -143,7 +139,7 @@ async fn task_mmt(
 
             if ctl.set_config(&AccessPointStation(st_conf, ap_conf())).is_ok() {
                 connected = ctl.connect_async().await.is_ok();
-                esp_println::println!("STA connect: {}", connected);
+                esp_println::println!("sta: {}", connected);
             }
         }
 
@@ -162,8 +158,6 @@ async fn task_mmt(
             cred = c;
             apply = true;
         }
-
-        Timer::after_millis(1000).await;
     }
 }
 
@@ -198,179 +192,60 @@ async fn task_dhcp(stack: Stack<'static>, ip: Ipv4Addr) {
 #[embassy_executor::task]
 async fn task_cap(
     stack: Stack<'static>,
+    sta: Stack<'static>,
     snd: Sender<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
 ) {
-    let buffers = TcpBuffers::<1, 1024, 1024>::new();
-    let tcp = Tcp::new(stack, &buffers);
-    let acceptor = tcp
-        .bind(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            80,
-        )))
-        .await
-        .unwrap();
+    let tcp_buf = TcpBuffers::<1, 1024, 1024>::new();
+    let tcp = Tcp::new(stack, &tcp_buf);
 
-    let mut server = HttpServer::<1, 1024, 16>::new();
+    let acceptor = tcp.bind(SocketAddr::V4(SocketAddrV4::new(
+        Ipv4Addr::UNSPECIFIED,
+        80,
+    ))).await.unwrap();
+
+    let mut srv = HttpServer::<1, 1024, 16>::new();
 
     loop {
         let acceptor = edge_nal::WithTimeout::new(3000, acceptor);
-        let handler = CapHandler { snd };
+        let handler = cap::CaptureHandler { snd, sta };
 
-        if let Err(e) = server.run(Some(3000), acceptor, handler).await {
+        if let Err(e) = srv.run(Some(3000), acceptor, handler).await {
             esp_println::println!("http error: {:?}", e);
             Timer::after_millis(500).await;
         }
     }
 }
 
-struct CapHandler {
-    snd: Sender<'static, CriticalSectionRawMutex, cap::Credentials, 1>,
-}
-
-impl Handler for CapHandler {
-    type Error<E>
-        = HttpError<E>
-    where
-        E: Debug;
-
-    async fn handle<T, const N: usize>(
-        &self,
-        _task_id: impl Display + Copy,
-        conn: &mut Connection<'_, T, N>,
-    ) -> Result<(), Self::Error<T::Error>>
-    where
-        T: Read + Write,
-    {
-        let headers = conn.headers()?;
-
-        if headers.method != Method::Get {
-            conn.initiate_response(
-                405,
-                Some("Method Not Allowed"),
-                &[("Connection", "close")],
-            )
-            .await?;
-            return Ok(());
-        }
-
-        match headers.path {
-            "/" => {
-                conn.initiate_response(
-                    200,
-                    Some("OK"),
-                    &[
-                        ("Content-Type", "text/html"),
-                        ("Content-Encoding", "gzip"),
-                        ("Connection", "close"),
-                    ],
-                )
-                .await?;
-                conn.write_all(PAGE).await?;
-            }
-            path => match parse_credentials(path) {
-                Some(cred) => {
-                    esp_println::println!("Request at: {}", path);
-                    esp_println::println!(
-                        "Received credentials: {} / {}",
-                        cred.ssid(),
-                        cred.pass()
-                    );
-
-                    conn.initiate_response(
-                        204,
-                        Some("No Content"),
-                        &[("Connection", "close")],
-                    )
-                    .await?;
-                    self.snd.send(cred).await;
-                }
-                None if path.starts_with("/set/") => {
-                    conn.initiate_response(
-                        400,
-                        Some("Bad Request"),
-                        &[("Connection", "close")],
-                    )
-                    .await?;
-                }
-                None => {
-                    conn.initiate_response(
-                        404,
-                        Some("Not Found"),
-                        &[("Connection", "close")],
-                    )
-                    .await?;
-                }
-            },
-        }
-
-        Ok(())
-    }
-}
-
-fn parse_credentials(path: &str) -> Option<cap::Credentials> {
-    let params = path.strip_prefix("/set/")?;
-    let (ssid, pass) = params.split_once('/')?;
-
-    if ssid.is_empty() || pass.contains('/') {
-        return None;
-    }
-
-    let mut ssid_buf = [0; 32];
-    let mut pass_buf = [0; 64];
-    let ssid = percent_decode(ssid, &mut ssid_buf)?;
-    let pass = percent_decode(pass, &mut pass_buf)?;
-
-    Some(cap::Credentials::new(ssid, pass))
-}
-
-fn percent_decode<'a>(value: &str, buf: &'a mut [u8]) -> Option<&'a str> {
-    let bytes = value.as_bytes();
-    let mut pos = 0;
-    let mut len = 0;
-
-    while pos < bytes.len() {
-        if len == buf.len() {
-            return None;
-        }
-
-        buf[len] = if bytes[pos] == b'%' {
-            let high = hex(*bytes.get(pos + 1)?)?;
-            let low = hex(*bytes.get(pos + 2)?)?;
-            pos += 3;
-            (high << 4) | low
-        } else {
-            let byte = bytes[pos];
-            pos += 1;
-            byte
-        };
-        len += 1;
-    }
-
-    core::str::from_utf8(&buf[..len]).ok()
-}
-
-fn hex(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
 #[embassy_executor::task]
 async fn task_ddp(stack: Stack<'static>, mut i2c: I2c<'static, Async>) {
+    let pixels = loop {
+        let mut size = [0; 2];
+
+        match i2c.read_async(DA, &mut size).await {
+            Ok(()) => {
+                let pixels = u16::from_be_bytes(size);
+
+                if (1..=ddp::MAX_PIXELS).contains(&pixels) {
+                    break pixels;
+                }
+
+                esp_println::println!("invalid tx pixel count: {}", pixels);
+            }
+            Err(e) => esp_println::println!("tx pixel count error: {:?}", e),
+        }
+
+        Timer::after_millis(500).await;
+    };
+
+    esp_println::println!("tx pixels: {}", pixels);
+
     let mut srv = ddp::Listener::new(stack);
-    let mut pkt = ddp::Packet::default();
 
     loop {
-        srv.recv(&mut pkt).await;
-
-        esp_println::println!("Recevied");
-
-        let body: &[u8] = unsafe { bytemuck::cast_slice(&pkt.body.rgb) };
-        let tx = &body[..pkt.header.size as usize];
-
-        i2c.write_async(DA, tx).await.unwrap();
+        if let Some(frame) = srv.recv(pixels).await
+            && let Err(e) = i2c.write_async(DA, frame).await
+        {
+            esp_println::println!("tx frame error: {:?}", e);
+        }
     }
 }

@@ -36,7 +36,6 @@ embedded-io-async = { workspace = true }
 static_cell = { workspace = true }
 panic-halt = { workspace = true }
 panic-reset = { workspace = true }
-bytemuck = { version = "1.25.2", features = ["derive"] }
 
 [build-dependencies]
 flate2 = "1"

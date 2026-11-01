@@ -27,7 +27,6 @@
             packages = with pkgs; [
               rustToolchain
               espflash
-              elf2uf2-rs
               picotool
               python3
               python3Packages.pip

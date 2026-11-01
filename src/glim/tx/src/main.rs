@@ -39,12 +39,20 @@ async fn main(_spawner: Spawner) {
         Irqs,
         cfg);
 
-    let mut frame = [0u8; 384];
+    let pixels = led.size().await;
+    let size = pixels.to_be_bytes();
+    let frame_size = usize::from(pixels) * 3;
+    let mut frame = [0u8; led::MAX_PIXELS * 3];
 
     loop {
         match dev.listen(&mut frame).await {
-            Ok(i2c_slave::Command::Write(n)) => led.push(&frame[..n]).await,
-            Err(i2c_slave::Error::PartialWrite(n)) => led.push(&frame[..n]).await,
+            Ok(i2c_slave::Command::Read) => {
+                let _ = dev.respond_to_read(&size).await;
+            }
+            Ok(i2c_slave::Command::Write(n))
+            | Err(i2c_slave::Error::PartialWrite(n)) if n == frame_size => {
+                led.push(&frame[..n]).await;
+            }
             _ => (),
         }
     }

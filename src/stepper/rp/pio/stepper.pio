@@ -1,12 +1,59 @@
 .program stepper
-.side_set 4
+.side_set 4 opt
+
+    set y, 0 ; initial state
 
 .wrap_target
-bit:
-    out x, 1        side 0b0 [3]; 4
-    jmp !x, zer     side 0b1 [2]; 3
-one:
-    jmp bit         side 0b1 [2]; 3
-zer:
-    nop             side 0b0 [2]; 3
+    pull block    side 0b0000
+    out x, 1      ; direction
+    jmp x cw
+
+; -- counterclockwise
+cc:
+    out x, 31
+    jmp y-- flush
+
+; -- clockwise
+cw:
+    out x, 31
+    mov y, !y
+    jmp y-- inc
+inc:
+    mov y, !y
+
+; -- flush
+flush:
+    mov osr, y
+    in osr, 3
+    mov y, isr
+
+    jmp y--, s17
+    jmp end       side 0b1000
+s17:
+    jmp y--, s27
+    jmp end       side 0b1100
+s27:
+    jmp y--, s37
+    jmp end       side 0b0100
+s37:
+    jmp y--, s47
+    jmp end       side 0b0110
+s47:
+    jmp y--, s57
+    jmp end       side 0b0010
+s57:
+    jmp y--, s67
+    jmp end       side 0b0011
+s67:
+    jmp y--, s77
+    jmp end       side 0b0001
+s77:
+    jmp end       side 0b1001
+
+end:
+    mov y, isr
+
+delay:
+    jmp x-- delay
+
 .wrap

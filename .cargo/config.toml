@@ -11,6 +11,12 @@ rustflags = [
   "-C", "link-arg=-Tlink-rp.x",
 ]
 
+[target.thumbv8m.main-none-eabihf]
+runner = "sudo picotool load -v -x -t elf"
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]
+
 [target.riscv32imc-unknown-none-elf]
 runner = "sudo espflash flash --monitor --log-format defmt"
 rustflags = [

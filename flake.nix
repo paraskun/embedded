@@ -18,7 +18,7 @@
           };
 
           rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-            targets = [ "thumbv6m-none-eabi" "riscv32imc-unknown-none-elf" ];
+            targets = [ "thumbv6m-none-eabi" "thumbv8m.main-none-eabihf" "riscv32imc-unknown-none-elf" ];
             extensions = [ "rust-src" "llvm-tools" ];
           };
         in

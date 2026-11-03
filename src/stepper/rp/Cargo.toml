@@ -1,8 +1,8 @@
 [package.metadata.xtask]
 project = "stepper"
 part = "rp"
-target = "thumbv6m-none-eabi"
-chip = "RP2040"
+target = "thumbv8m.main-none-eabihf"
+chip = "RP235x"
 order = 1
 
 [package]
@@ -15,7 +15,7 @@ embassy-executor = { workspace = true }
 embassy-time = { workspace = true }
 embassy-futures = { workspace = true }
 embassy-rp = { version = "0.10.0", features = [
-    "rp2040",
+    "rp235xa",
     "time-driver",
     "executor-thread",
     "critical-section-impl",

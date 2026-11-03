@@ -6,18 +6,19 @@
 .wrap_target
     pull block    side 0b0000
     out x, 1      ; direction
-    jmp x cw
+    jmp !x, cc
+    jmp cw
 
 ; -- counterclockwise
 cc:
     out x, 31
-    jmp y-- flush
+    jmp y--, flush
 
 ; -- clockwise
 cw:
     out x, 31
     mov y, !y
-    jmp y-- inc
+    jmp y--, inc
 inc:
     mov y, !y
 
@@ -54,6 +55,6 @@ end:
     mov y, isr
 
 delay:
-    jmp x-- delay
+    jmp x--, delay
 
 .wrap

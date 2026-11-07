@@ -3,6 +3,25 @@ VCD2LXT      := vcd2lxt
 GTKWAVE      := gtkwave
 GTKWAVE_FIFO := out/gtkwave.fifo
 
+# Headless Vivado configuration. FPGA_PART is the Cmod A7-35T by default.
+INCUS             ?= incus
+VIVADO_CONTAINER  ?= ubuntu
+VIVADO            ?= /opt/Xilinx/Vivado/2015.4/bin/vivado
+VIVADO_LICENSE    ?= /opt/Xilinx/licenses/ise_vivado_petalinux.lic
+VIVADO_COMPAT_LIB ?= /opt/Xilinx/Vivado_HLS/2015.4/lnx64/tools/gdb_v7_2
+FPGA_PART         ?= xc7a35tcpg236-1
+CLOCK_DIV         ?= 12000000
+VIVADO_BUILD_DIR  ?= out/vivado/clocker
+VIVADO_BITSTREAM  := $(VIVADO_BUILD_DIR)/clocker.bit
+HOST_UID          := $(shell id -u)
+HOST_GID          := $(shell id -g)
+
+VIVADO_SOURCES := \
+	clk/div.sv \
+	clk/decoder.sv \
+	clk/clock.sv \
+	clk/clocker.sv
+
 PROJECTS := cmp2 cmp4 cmp8 mux2 mux4 mux8 mux16 coder decoder pr_coder
 
 .PHONY: all clean $(PROJECTS)
@@ -56,3 +75,27 @@ $(eval $(call sim_rules,sr,  mem/sr.sv mem/tb_sr.sv))
 $(eval $(call sim_rules,cnt,  cnt/cnt.sv cnt/tb_cnt.sv))
 $(eval $(call sim_rules,cnt4, cnt/cnt4.sv cnt/tb_cnt4.sv))
 $(eval $(call sim_rules,cnt5, cnt/cnt5.sv cnt/tb_cnt5.sv))
+
+.PHONY: bitstream vivado-clean
+
+bitstream: $(VIVADO_BITSTREAM)
+
+$(VIVADO_BITSTREAM): $(VIVADO_SOURCES) vivado/clocker.tcl vivado/clocker.xdc
+	@mkdir -p $(VIVADO_BUILD_DIR)
+	$(INCUS) exec $(VIVADO_CONTAINER) \
+		--user $(HOST_UID) --group $(HOST_GID) \
+		--cwd $(CURDIR) \
+		--env HOME=/tmp \
+		--env LD_LIBRARY_PATH=$(VIVADO_COMPAT_LIB) \
+		--env XILINXD_LICENSE_FILE=$(VIVADO_LICENSE) \
+		--env LM_LICENSE_FILE=$(VIVADO_LICENSE) \
+		--env FPGA_PART=$(FPGA_PART) \
+		--env CLOCK_DIV=$(CLOCK_DIV) \
+		--env BUILD_DIR=$(CURDIR)/$(VIVADO_BUILD_DIR) \
+		-- $(VIVADO) -mode batch \
+			-source vivado/clocker.tcl \
+			-log $(CURDIR)/$(VIVADO_BUILD_DIR)/vivado.log \
+			-journal $(CURDIR)/$(VIVADO_BUILD_DIR)/vivado.jou
+
+vivado-clean:
+	rm -rf $(VIVADO_BUILD_DIR)

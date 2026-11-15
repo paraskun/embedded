@@ -20,6 +20,7 @@ embassy-rp = { version = "0.10.0", features = [
     "executor-thread",
     "critical-section-impl",
     "executor-interrupt",
+    "unstable-pac",
 ]}
 
 cortex-m = { version = "0.7.9", features = [ "inline-asm" ] }

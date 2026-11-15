@@ -1,0 +1,21 @@
+.program stepper
+.side_set 1
+.wrap_target
+    pull block                  side 0 ; cycle 0: explicit TX FIFO pull
+    out x, 1                    side 0 ; cycle 1: step/hold
+    out pins, 1                 side 0 ; cycle 2: DIR
+    out y, 30                   side 0 ; cycle 3: duration D
+    jmp !x, hold                side 0 ; cycle 4
+    nop                         side 1 [1] ; cycles 5..6: STEP high
+    jmp settle                  side 0 ; cycle 7: STEP low
+hold:
+    nop                         side 0 [1] ; cycles 5..6
+    nop                         side 0 ; cycle 7
+settle:
+    jmp y--, wait_units         side 0 [6] ; cycles 8..14: Y = D - 1
+wait_units:
+    jmp !y, done                side 0 [3] ; 4 cycles for terminal test
+    jmp y--, wait_units         side 0 [15] ; 16 cycles per extra unit
+done:
+    nop                         side 0 ; final cycle
+.wrap

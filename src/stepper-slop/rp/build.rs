@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=memory.x");
+    println!("cargo:rerun-if-changed=pio/stepper.pio");
 
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join("memory.x"))

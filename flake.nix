@@ -36,6 +36,7 @@
               xorg.libX11
               expat
               zlib
+              quint
             ];
 
             shellHook = ''

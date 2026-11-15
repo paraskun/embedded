@@ -1,12 +1,12 @@
 [package.metadata.xtask]
-project = "stepper"
+project = "stepper-slop"
 part = "rp"
 target = "thumbv8m.main-none-eabihf"
 chip = "RP235x"
 order = 1
 
 [package]
-name = "stepper-rp"
+name = "stepper-slop-rp"
 edition.workspace = true
 version.workspace = true
 

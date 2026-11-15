@@ -1,0 +1,22 @@
+.program stepper
+.side_set 1
+.wrap_target
+    pull block     side 0      ; 1
+    out x, 1       side 0      ; 1: x = 0 for step, 1 for hold
+    out pins, 1    side 0      ; 1: DIR
+    out y, 30      side 0      ; 1: y = D
+    jmp !x, step   side 0      ; 1
+hold:
+    nop            side 0 [1]  ; 2: no STEP pulse
+    jmp prep       side 0      ; 1: STEP low
+step:
+    nop            side 1 [1]  ; 2: STEP high
+    nop            side 0      ; 1: STEP low
+prep:
+    jmp y--, halt  side 0 [6]  ; 7: y = D - 1
+halt:
+    jmp !y, done   side 0 [3]  ; 4
+    jmp y--, halt  side 0 [15] ; 16
+done:
+    nop            side 0      ; 1
+.wrap

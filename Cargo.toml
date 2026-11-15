@@ -7,7 +7,7 @@ members = [
 ]
 exclude = [
   "src/glim/box",
-  "src/stepper/spec",
+  "src/stepper-slop/spec",
 ]
 
 default-members = [ "xtask" ]

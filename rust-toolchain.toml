@@ -2,5 +2,6 @@
 channel = "stable"
 targets = [
   "thumbv6m-none-eabi",
+  "thumbv8m.main-none-eabihf",
   "riscv32imc-unknown-none-elf",
 ]

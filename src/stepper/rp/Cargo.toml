@@ -21,8 +21,22 @@ embassy-rp = { version = "0.10.0", features = [
     "executor-interrupt",
 ] }
 
+embedded-alloc = "0.7.0"
+
 cortex-m = "0.7"
 cortex-m-rt = "0.7.6"
 
 fixed = { workspace = true }
 panic-halt = { workspace = true }
+
+rhai = {
+  version = "1.27.0", 
+  default-features = false,
+  features = [
+    "no_std",
+    "no_module",
+    "no_custom_syntax",
+  ]
+}
+
+libm = "0.2"
